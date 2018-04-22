@@ -154,30 +154,25 @@ void Run(int numCycles) {
 void RenderBG() {
 	CurPalette = BGPalette;
 	int line = scanline % 8;
-	int numY = scanline >> 3;
+	int numY = (scanline >> 3) + 1;
 
-	// base none scrolling render
-	/*
-	for (int p = 0; p < 4; p++) {
-	for (int i = 0; i < 32; i++) {
-	curColorSet = pages[p].params[(numY / 4) * 8 + i / 4];
-	curColorSet = (curColorSet >> (((((i % 4)) / 2) | (((numY % 4) / 2) << 1)) * 2)) & 0b11;
-	spriteList[GetBGSpriteList()].DrawLine(pages[p].data[numY * 32 + i], line, (pageSprites[p] + (scanline * 256 * 3 + i * 8 * 3)));
-	}
-	}*/
-
-	// fine scroll wrong colors
-	/*
-	char pg1 = GetCurPage() & 1;
+	char pg1 = GetCurPage();
 	char pg2;
 	if (pg1) pg2 = 0;
 	else pg2 = 1;
 
 	char fullLine[32 * 8 * 3 * 2];
+	Color clearColor = palette.GetColor(SPRPalette[0]);
+	for (int i = 0; i < 32 * 8 * 2; i++) {
+		fullLine[i * 3] = clearColor.r;
+		fullLine[i * 3 + 1] = clearColor.g;
+		fullLine[i * 3 + 2] = clearColor.b;
+	}
+
 	for (int i = 0; i < 32; i++) {
-	curColorSet = pages[pg1].params[(numY / 4) * 8 + i / 4];
-	curColorSet = (curColorSet >> (((((i % 4)) / 2) | (((numY % 4) / 2) << 1)) * 2)) & 0b11;
-	spriteList[GetBGSpriteList()].DrawLine(pages[pg1].data[numY * 32 + i], line, (fullLine + (i * 8 * 3)));
+		curColorSet = pages[pg1].params[(numY / 4) * 8 + i / 4];
+		curColorSet = (curColorSet >> (((((i % 4)) / 2) | (((numY % 4) / 2) << 1)) * 2)) & 0b11;
+		spriteList[GetBGSpriteList()].DrawLine(pages[pg1].data[numY * 32 + i], line, (fullLine + (i * 8 * 3)));
 	}
 	for (int i = 32; i < 64; i++) {
 	curColorSet = pages[pg2].params[(numY / 4) * 8 + (i-32) / 4];
@@ -185,25 +180,9 @@ void RenderBG() {
 	spriteList[GetBGSpriteList()].DrawLine(pages[pg2].data[numY * 32 + i - 32], line, (fullLine + (i * 8 * 3)));
 	}
 	for (int i = scrollX, j = 0; i < (scrollX + 256); i++, j++) {
-	screenSpriteData[scanline * 256 * 3 + j * 3] = fullLine[i * 3];
-	screenSpriteData[scanline * 256 * 3 + j * 3 + 1] = fullLine[i * 3 + 1];
-	screenSpriteData[scanline * 256 * 3 + j * 3 + 2] = fullLine[i * 3 + 2];
-	}
-	*/
-
-	// now working per tile scroll
-	char tileOffset = scrollX >> 3;
-	char tileArea = 32 - tileOffset;
-
-	for (int i = 0; i < tileArea; i++) {
-		curColorSet = pages[0].params[(numY / 4) * 8 + i / 4];
-		curColorSet = (curColorSet >> (((((i % 4)) / 2) | (((numY % 4) / 2) << 1)) * 2)) & 0b11;
-		spriteList[GetBGSpriteList()].DrawLine(pages[0].data[numY * 32 + tileOffset + i], line, (screenSpriteData + (scanline * 256 * 3 + i * 8 * 3)));
-	}
-	for (int i = tileArea; i < 32; i++) {
-		curColorSet = pages[0].params[(numY / 4) * 8 + i / 4];
-		curColorSet = (curColorSet >> (((((i % 4)) / 2) | (((numY % 4) / 2) << 1)) * 2)) & 0b11;
-		spriteList[GetBGSpriteList()].DrawLine(pages[0].data[numY * 32 + i - tileArea], line, (screenSpriteData + (scanline * 256 * 3 + i * 8 * 3)));
+		screenSpriteData[scanline * 256 * 3 + j * 3] = fullLine[i * 3];
+		screenSpriteData[scanline * 256 * 3 + j * 3 + 1] = fullLine[i * 3 + 1];
+		screenSpriteData[scanline * 256 * 3 + j * 3 + 2] = fullLine[i * 3 + 2];
 	}
 }
 void EvaluateSPR() {
@@ -218,17 +197,17 @@ void RenderSPR() {
 		//vertical mirroring
 		if (OAM[i + 2] & 0x80) {
 			// if sprite is on scanline
-			if (OAM[i] >= scanline - 8 && OAM[i] < scanline) {
-				int line = (scanline - OAM[i] - 1);
+			if (OAM[i] >= scanline && OAM[i] < scanline + 8) {
+				int line = (OAM[i] - scanline);
 				if (OAM[i] + line < 240 && OAM[i] + line > 0) {
 					if (OAM[i + 2] & 0b1000000) {
 						if (scanline * 256 * 3 + OAM[i + 3] * 3 <= 256 * 240 * 3 - 24) {
-							spriteList[GetSPRSpriteList()].DrawLineMirrored(OAM[i + 1], 7 - line, screenSpriteData + scanline * 256 * 3 + OAM[i + 3] * 3);
+							spriteList[GetSPRSpriteList()].DrawLineMirrored(OAM[i + 1], line, screenSpriteData + scanline * 256 * 3 + OAM[i + 3] * 3);
 						}
 					}
 					else {
 						if (scanline * 256 * 3 + OAM[i + 3] * 3 <= 256 * 240 * 3 - 8 * 4) {
-							spriteList[GetSPRSpriteList()].DrawLine(OAM[i + 1], 7 - line, screenSpriteData + scanline * 256 * 3 + OAM[i + 3] * 3);
+							spriteList[GetSPRSpriteList()].DrawLine(OAM[i + 1], line, screenSpriteData + scanline * 256 * 3 + OAM[i + 3] * 3);
 						}
 					}
 				}
@@ -236,8 +215,8 @@ void RenderSPR() {
 		}
 		else {
 			// if sprite is on scanline
-			if (OAM[i] >= scanline - 8 && OAM[i] < scanline) {
-				int line = (scanline - OAM[i] - 1);
+			if (OAM[i] >= scanline && OAM[i] < scanline+8) {
+				int line = 7 -(OAM[i] - scanline);
 				if (OAM[i] + line < 240 && OAM[i] + line > 0) {
 					if (OAM[i + 2] & 0b1000000) {
 						if (scanline * 256 * 3 + OAM[i + 3] * 3 <= 256 * 240 * 3 - 24) {
@@ -261,18 +240,20 @@ void HandleNMI() {
 	PC = NMI_ADDR;
 }
 
+void LimitFPS() {
+	Sleep(1000.0 / 80.0);
+}
+
 void PresentFrame() {
 	glClear(GL_COLOR_BUFFER_BIT);
 
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 256, 240, 0, GL_RGB, GL_UNSIGNED_BYTE, (GLvoid*)screenSpriteData);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 256, NTSC_VIEW_HEIGHT, 0, GL_RGB, GL_UNSIGNED_BYTE, (GLvoid*)screenSpriteData);
 	glGenerateMipmap(GL_TEXTURE_2D);
 	glDrawArrays(GL_TRIANGLES, 0, 6);
 
 	glfwSwapBuffers(mainWindow);
 
-	for (int i = 0; i < 256 * 240 * 3; i++) {
-		screenSpriteData[i] = 0;
-	}
+	LimitFPS();
 }
 void PreRender() {
 	SetWriteLock(0);
@@ -315,7 +296,6 @@ void HBlank() {
 		RenderScanline();
 	}
 	else if (scanline == 240) {
-		//RenderScanline();
 		PostRender();
 		StartVBlank();
 	}
@@ -339,6 +319,10 @@ void NextLine() {
 void CheckPause() {
 	if (glfwGetKey(mainWindow, GLFW_KEY_SPACE)) {
 		cout << "pause" << endl;
+		for (int i = 0; i < 16; i++) {
+			cout << hex << (int)BGPalette[i] << endl;
+		}
+
 		ENABLE_BREAK = true;
 		while (!glfwGetKey(mainWindow, GLFW_KEY_Q)) {
 			if (glfwGetKey(mainWindow, GLFW_KEY_S)) {
@@ -360,15 +344,34 @@ int main() {
 	palette.LoadColorTable();
 	LoadOpcodesTable();
 
+
+	// setup mirroring
+	if (currentROM.fourPage) {
+		cout << "Four pages not supported" << endl;
+		system("pause");
+	}
+	else if (currentROM.verticalMirroring) {
+		pages[1].data = pages[0].data;
+		pages[1].params = pages[0].params;
+		pages[3].data = pages[2].data;
+		pages[3].params = pages[2].params;
+	}
+	else {
+		pages[2].data = pages[0].data;
+		pages[2].params = pages[0].params;
+		pages[3].data = pages[1].data;
+		pages[3].params = pages[1].params;
+	}
+
 	// pressets
 	SP = 0xff;
 	F = 0x34;
 	cycle = 0;
 	vramPointer = 0;
 	for (int i = 0; i < 0x800; i++)
-		ROM[i] = 0xff;
+		ROM[i] = 0x0;
 	for (int i = 0; i < 256; i++) {
-		OAM[i] = 0xff;
+		OAM[i] = 0x0;
 	}
 
 	// get nmi address
@@ -387,9 +390,7 @@ int main() {
 
 	while (true) {
 		NextLine();
-
 		CheckPause();
-
 		glfwPollEvents();
 	}
 	return 0;

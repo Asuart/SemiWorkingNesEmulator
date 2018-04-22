@@ -18,7 +18,13 @@ char* CurPalette = BGPalette;
 unsigned short NMI_ADDR;
 unsigned short RESET_ADDR;
 
-void LoadROM(char* path = "F:/balloon.nes") {
+struct ROMinfo {
+	bool fourPage;
+	bool verticalMirroring;
+};
+ROMinfo currentROM;
+
+void LoadROM(char* path = "F:/dk.nes") {
 	char b0 = 0b1;
 	char b1 = 0b10;
 	char b2 = 0b100;
@@ -48,6 +54,9 @@ void LoadROM(char* path = "F:/balloon.nes") {
 	char CHRROMcount = ROMdata[5];
 	char PRGROMcount = ROMdata[4];
 
+	currentROM.fourPage = ROMdata[6] & b3;
+	currentROM.verticalMirroring = !(ROMdata[6] & b0);
+
 	std::cout << "ROM size: " << ROMsize << std::endl;
 	std::cout << "PRG ROMs: " << (int)ROMdata[4] << std::endl;
 	std::cout << "CHR ROMs: " << (int)ROMdata[5] << std::endl;
@@ -56,7 +65,12 @@ void LoadROM(char* path = "F:/balloon.nes") {
 	std::cout << "Scrolling: " << ((ROMdata[6] & b3) ? "4 page" : (((int)ROMdata[6] & b0) ? "vertical" : "horizontal")) << std::endl;
 	std::cout << "Cart has PRGRAM: " << ((int)ROMdata[6] & b1) << std::endl;
 	std::cout << "Cart has Trainer: " << ((int)ROMdata[6] & b2) << std::endl;
-	std::cout << "TV system: " << (((int)ROMdata[9] & b0)? "PLA" : "NTSC" )<< std::endl;
+	std::cout << "TV system: " << (((int)ROMdata[9] & b0)? "PAL" : "NTSC" )<< std::endl;
+	if (ROMdata[9] & b0) {
+		cout << "PAL not supported" << endl;
+		system("pause");
+	}
+
 
 	for (int i = 0; i < 0x10000; i++) ROM[i] = 0xff;
 	//upload

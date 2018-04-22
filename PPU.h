@@ -40,6 +40,7 @@ GLuint shader;
 int SCREEN_SCALE = 3;
 const int SCREEN_WIDTH = 256;
 const int SCREEN_HEIGHT = 240;
+const int NTSC_VIEW_HEIGHT = 224;
 const int SPRITE_SIZE = 8;
 const int SPRITE_LIST_SIZE = 16;
 
@@ -203,8 +204,8 @@ struct Sprite {
 
 	void DrawLine(char line, char* sprite, unsigned char start, unsigned char end) {
 		for (int i = start; i < end; i++) {
-			if (pixels[line][i] > 0) {
-				Color col = palette.GetColor(CurPalette[(curColorSet << 2) | (pixels[line][i])]);
+			if (pixels[line][i] != 0) {
+				Color col = palette.GetColor(CurPalette[((curColorSet << 2) | (pixels[line][i]))]);
 				sprite[i * 3] = col.r;
 				sprite[i * 3 + 1] = col.g;
 				sprite[i * 3 + 2] = col.b;
