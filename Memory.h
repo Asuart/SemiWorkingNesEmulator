@@ -18,7 +18,7 @@ char* CurPalette = BGPalette;
 unsigned short NMI_ADDR;
 unsigned short RESET_ADDR;
 
-void LoadROM(char* path) {
+void LoadROM(char* path = "F:/balloon.nes") {
 	char b0 = 0b1;
 	char b1 = 0b10;
 	char b2 = 0b100;
@@ -28,7 +28,6 @@ void LoadROM(char* path) {
 	char b6 = 0b1000000;
 	char b7 = 0b10000000;
 
-	path = "F:/reads.nes";
 	std::ifstream reader;
 	reader.open(path, std::ifstream::binary);
 	if (!reader) {

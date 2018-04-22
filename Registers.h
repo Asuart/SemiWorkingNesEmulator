@@ -1,17 +1,24 @@
 #pragma once
-
 unsigned char AC, F, X, Y;
 unsigned char SP;
 unsigned short PC;
 unsigned char opcode;
 
-unsigned short op;
+unsigned short op; // operand after instruction
+unsigned char* _op = (unsigned char*)&op;
+
+// vram address and toggle to swap writing byte in it
+unsigned short vramPointer;
+char* _vramPointer = (char*)&vramPointer;
+bool lowVramPointer = true;
+
+// decode addressing mode to those values
 unsigned short address;
 unsigned char value;
-unsigned char* cell;
+unsigned char* cell; // to write value back
 
-char* _op = (char*)&op;
-char clk;
+// to read input and some other sings
+bool writeOperation = false;
 
 unsigned char scrollX, scrollY;
 unsigned char OAMAddress;
@@ -46,8 +53,12 @@ const unsigned char F_1 = 0b100000; // 1 flag
 const unsigned char F_TRANS = 0b1000000; // transfer to sign bit flag
 const unsigned char F_SIGN = 0b10000000; // sign flag
 
+// get flags
+inline const bool GetFlag(char flagName) {
+	return F & flagName;
+}
 inline bool GetCarry() {
-	return F & 0b1;
+	return F & F_CARRY;
 }
 inline bool GetZero() {
 	return F & F_ZERO;
@@ -71,6 +82,7 @@ inline bool GetSign() {
 	return F & F_SIGN;
 }
 
+//set flags if get true, else unset
 inline void SetCarry(char b) {
 	if (b) SET_CARRY();
 	else UNSET_CARRY();
@@ -99,9 +111,7 @@ inline void SetDecimal(char b) {
 	if (b)SET_DECIMAL();
 	else UNSET_DECIMAL();
 }
-void Set1(char b) {
-	SET_1();
-}
-inline const bool GetFlag(char flagName) {
-	return F & flagName;
+inline void Set1(char b) {
+	if (b)SET_1();
+	else UNSET_1();
 }

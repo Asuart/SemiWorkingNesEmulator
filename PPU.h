@@ -21,7 +21,7 @@ struct Vertex {
 };
 struct Plane {
 	Vertex vertices[6];
-	Plane(){}
+	Plane() {}
 	Plane(vec2 topLeft, vec2 bottomRight) {
 		vertices[0] = Vertex(topLeft.x, topLeft.y, 0, 0);
 		vertices[1] = Vertex(topLeft.x, bottomRight.y, 0, 1);
@@ -31,12 +31,8 @@ struct Plane {
 		vertices[5] = Vertex(bottomRight.x, topLeft.y, 1, 0);
 	}
 };
-GLuint pageVAOs[4];
 GLuint screenVAO;
-Plane pagePlanes[4];
 Plane screenPlane;
-GLuint pagePlanesObjects[4];
-GLuint pageSpriteIDs[4];
 GLuint screenPlaneObject;
 GLuint screenSprite;
 GLuint shader;
@@ -47,19 +43,8 @@ const int SCREEN_HEIGHT = 240;
 const int SPRITE_SIZE = 8;
 const int SPRITE_LIST_SIZE = 16;
 
-unsigned short vramPointer;
-unsigned short tempVramPointer;
-char* _vramPointer = (char*)&tempVramPointer;
-bool lowVramPointer = true;
-
 GLFWwindow* mainWindow;
 const int SCREEN_SPRITE_SIZE = SCREEN_WIDTH * SCREEN_HEIGHT * 3;
-char pageSprites[4][SCREEN_SPRITE_SIZE];
-
-//GLFWwindow* chrromView;
-const int CHRROM_SPRITE_SIZE = 128 * 128 * 3;
-char chrromSprite[CHRROM_SPRITE_SIZE];
-
 
 bool InitWindow() {
 	if (!glfwInit()) {
@@ -67,7 +52,6 @@ bool InitWindow() {
 		return false;
 	}
 	mainWindow = glfwCreateWindow(SCREEN_WIDTH*SCREEN_SCALE, SCREEN_HEIGHT*SCREEN_SCALE, "emu", NULL, NULL);
-	//chrromView = glfwCreateWindow(256 * SCREEN_SCALE, 256 * SCREEN_SCALE, "CHR-ROM VIEW", NULL, NULL);
 	if (!mainWindow) {
 		cout << "Init window failed" << endl;
 		glfwTerminate();
@@ -89,36 +73,16 @@ bool InitGL() {
 	glEnable(GL_DOUBLEBUFFER);
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
-	glGenTextures(4, pageSpriteIDs);
 	glGenTextures(1, &screenSprite);
-	glGenVertexArrays(4, pageVAOs);
 	glGenVertexArrays(1, &screenVAO);
-	glGenBuffers(4, pagePlanesObjects);
 	glGenBuffers(1, &screenPlaneObject);
 	shader = ShaderLibrary.GetShader("base");
 
 
-	glBindTexture(GL_TEXTURE_2D,screenSprite);
+	glBindTexture(GL_TEXTURE_2D, screenSprite);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glBindTexture(GL_TEXTURE_2D, pageSpriteIDs[0]);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glBindTexture(GL_TEXTURE_2D, pageSpriteIDs[1]);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glBindTexture(GL_TEXTURE_2D, pageSpriteIDs[2]);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glBindTexture(GL_TEXTURE_2D, pageSpriteIDs[3]);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glBindTexture(GL_TEXTURE_2D, 0);
 
-	pagePlanes[0] = Plane(vec2(-1,  1), vec2(0, 0));
-	pagePlanes[1] = Plane(vec2(0, 1), vec2(1, 0));
-	pagePlanes[2] = Plane(vec2(-1, 0), vec2(0, -1));
-	pagePlanes[3] = Plane(vec2(0, 0), vec2(1, -1));
 	screenPlane = Plane(vec2(-1, 1), vec2(1, -1));
 
 
@@ -129,40 +93,6 @@ bool InitGL() {
 	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), (void*)(2 * sizeof(GLfloat))); // texcoords
 	glEnableVertexAttribArray(0);
 	glEnableVertexAttribArray(1);
-
-	glBindVertexArray(pageVAOs[0]);
-	glBindBuffer(GL_ARRAY_BUFFER, pagePlanesObjects[0]);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * 24, pagePlanes[0].vertices, GL_STATIC_DRAW);
-	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), 0); // position
-	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), (void*)(2 * sizeof(GLfloat))); // texcoords
-	glEnableVertexAttribArray(0);
-	glEnableVertexAttribArray(1);
-
-	glBindVertexArray(pageVAOs[1]);
-	glBindBuffer(GL_ARRAY_BUFFER, pagePlanesObjects[1]);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * 24, pagePlanes[1].vertices, GL_STATIC_DRAW);
-	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), 0); // position
-	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), (void*)(2 * sizeof(GLfloat))); // texcoords
-	glEnableVertexAttribArray(0);
-	glEnableVertexAttribArray(1);
-
-	glBindVertexArray(pageVAOs[2]);
-	glBindBuffer(GL_ARRAY_BUFFER, pagePlanesObjects[2]);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * 24, pagePlanes[2].vertices, GL_STATIC_DRAW);
-	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), 0); // position
-	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), (void*)(2 * sizeof(GLfloat))); // texcoords
-	glEnableVertexAttribArray(0);
-	glEnableVertexAttribArray(1);
-
-
-	glBindVertexArray(pageVAOs[3]);
-	glBindBuffer(GL_ARRAY_BUFFER, pagePlanesObjects[3]);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * 24, pagePlanes[3].vertices, GL_STATIC_DRAW);
-	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), 0); // position
-	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), (void*)(2 * sizeof(GLfloat))); // texcoords
-	glEnableVertexAttribArray(0);
-	glEnableVertexAttribArray(1);
-
 
 	glUseProgram(shader);
 
@@ -255,11 +185,9 @@ struct Palette {
 Palette palette;
 
 struct Sprite {
-	char curLine;
 	unsigned char pixels[SPRITE_SIZE][SPRITE_SIZE];
 
 	Sprite(char* chrrom) {
-		curLine = 0;
 		char MASK = 0b10000000;
 		for (int i = 0; i < SPRITE_SIZE; i++) {
 			char v1 = chrrom[i];
@@ -271,20 +199,10 @@ struct Sprite {
 			}
 		}
 	}
-	Sprite() {
-		curLine = 0;
-	}
-	void DrawToSprite(char* sprite,short posX,short posY) {
-		for (int i = 0; i < 8; i++) {
-			for (int j = 0; j < 8; j++) {
-				sprite[((posY + i) * 256 + posX + j) * 3] = 40 * pixels[i][j];
-				sprite[((posY + i) * 256 + posX + j) * 3 + 1] = 0;
-				sprite[((posY + i) * 256 + posX + j) * 3 + 2] = 0;
-			}
-		}
-	}
-	void DrawLine(char line, char* sprite) {
-		for (int i = 0; i < 8; i++) {
+	Sprite() { }
+
+	void DrawLine(char line, char* sprite, unsigned char start, unsigned char end) {
+		for (int i = start; i < end; i++) {
 			if (pixels[line][i] > 0) {
 				Color col = palette.GetColor(CurPalette[(curColorSet << 2) | (pixels[line][i])]);
 				sprite[i * 3] = col.r;
@@ -295,8 +213,8 @@ struct Sprite {
 	}
 	void DrawLineMirrored(char line, char* sprite) {
 		for (int i = 0; i < 8; i++) {
-			if (pixels[line][7-i] > 0) {
-				Color col = palette.GetColor(CurPalette[(curColorSet<<2) | (pixels[line][7 - i])]);
+			if (pixels[line][7 - i] > 0) {
+				Color col = palette.GetColor(CurPalette[(curColorSet << 2) | (pixels[line][7 - i])]);
 				sprite[i * 3] = col.r;
 				sprite[i * 3 + 1] = col.g;
 				sprite[i * 3 + 2] = col.b;
@@ -316,15 +234,9 @@ struct SpriteList {
 			}
 		}
 	}
-	void DrawToSprite(char* sprite) {
-		for (int i = 0; i < 16; i++) {
-			for (int j = 0; j < 16; j++) {
-				sprites[i][j]->DrawToSprite(sprite, i * 8, j * 8);
-			}
-		}
-	}
-	void DrawLine(char tile, char line, char* sprite) {
-		sprites[(tile & 0xf0) >> 4][tile & 0xf]->DrawLine(line, sprite);
+
+	void DrawLine(char tile, char line, char* sprite, unsigned char start = 0, unsigned char end = 8) {
+		sprites[(tile & 0xf0) >> 4][tile & 0xf]->DrawLine(line, sprite, start, end);
 	}
 	void DrawLineMirrored(char tile, char line, char* sprite) {
 		sprites[(tile & 0xf0) >> 4][tile & 0xf]->DrawLineMirrored(line, sprite);
@@ -350,23 +262,17 @@ struct CharPage {
 		for (int i = 0; i < 30; i++) {
 			for (int j = 0; j < 32; j++) {
 				char code = data[i * 32 + j];
-				
 				for (int k = 0; k < 8; k++) {
-					spriteList[1].DrawLine(code, k, sprite + (i*8 + k) * 256 * 3 + j*8*3);
+					spriteList[1].DrawLine(code, k, sprite + (i * 8 + k) * 256 * 3 + j * 8 * 3);
 				}
 			}
 		}
 	}
 };
+CharPage pages[4];
 
 char GetCurPage() {
 	return ROM[0x2000] & 0b11;
-}
-char GetInc() {
-	return (ROM[0x2000] & 0b100) >> 2;
-}
-char GetSpriteCharset() {
-	return (ROM[0x2000] & 0b1000) >> 3;
 }
 char GetBGCharset() {
 	return (ROM[0x2000] & 0b10000) >> 4;
@@ -379,9 +285,7 @@ char GetSpriteSize() {
 	}
 	return val;
 }
-char GetNMIOnVB() {
-	return (ROM[0x2000] & 0b10000000) >> 7;
-}
+
 char GetClipBG() {
 	return (ROM[0x2001] & 0b10) >> 1;
 }
@@ -394,5 +298,3 @@ char GetShowBG() {
 char GetShowSprites() {
 	return (ROM[0x2001] & 0b10000) >> 4;
 }
-
-CharPage pages[4];

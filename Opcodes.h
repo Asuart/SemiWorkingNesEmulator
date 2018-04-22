@@ -1,32 +1,35 @@
 #pragma once
-
 #include "Memory.h"
 #include "Registers.h"
 #include <bitset>
-//#include <Windows.h>
 
 void GetOpcode() {
 	opcode = ROM[PC];
 	PC++;
 }
 void GetOperand() {
-	op = (unsigned char)ROM[PC];
+	op = ROM[PC] & 0xff;
 	PC++;
 }
 void GetOperands() {
-	_op[0] = (unsigned char)ROM[PC];
+	_op[0] = ROM[PC];
 	PC++;
-	_op[1] = (unsigned char)ROM[PC];
+	_op[1] = ROM[PC];
 	PC++;
 }
 
-bool writeOperation = false;
+// work but not work
+void CheckMirrors() {
+	if (address >= 0x2000 && address < 0x4000) {
+		address = ((address - 0x2000) % 8) + 0x2000;
+	}
+}
 
 short RelAddr(short adr,char offset) {
 	return adr + offset;
 }
-short GetIndirect(short zp) {
-	short adr;
+short GetIndirect(unsigned char zp) {
+	unsigned short adr;
 	char* p = (char*)&adr;
 	if ((zp & 0xff) == 0xff) {
 		p[0] = ZERO_PAGE[0xFF];
@@ -39,8 +42,9 @@ short GetIndirect(short zp) {
 	return adr;
 }
 void REL() {
-	value = op;
+	value = op & 0xff;
 	address = RelAddr(PC, value);
+	CheckMirrors();
 }
 void IMM() {
 	value = op & 0xff;
@@ -52,47 +56,54 @@ void ZP() {
 	value = ZERO_PAGE[address];
 }
 void ZPX() {
-	address = (op + (unsigned char)X) & 0xff;
+	address = (op + X) & 0xff;
+	CheckMirrors();
 	cell = (unsigned char*)&ZERO_PAGE[address];
 	value = ZERO_PAGE[address];
 }
 void ZPY() {
-	address = (op + (unsigned char)Y) & 0xff;
+	address = (op + Y) & 0xff;
+	CheckMirrors();
 	cell = (unsigned char*)&ZERO_PAGE[address];
 	value = ZERO_PAGE[address];
 }
 void ABS() {
 	address = op;
+	CheckMirrors();
 	cell = (unsigned char*)&ROM[address];
-	value = ROM[op];
+	value = ROM[address];
 }
 void ABSX() {
-	address = op + (unsigned char)X;
+	address = op + X;
+	CheckMirrors();
 	cell = (unsigned char*)&ROM[address];
 	value = ROM[address];
 }
 void ABSY() {
-	address = op + (unsigned char)Y;
+	address = op + Y;
+	CheckMirrors();
 	cell = (unsigned char*)&ROM[address];
 	value = ROM[address];
 }
 void INDX() {
-	address = GetIndirect(op + (unsigned char)X);
+	address = GetIndirect((op + X) & 0xff);
+	CheckMirrors();
 	cell = (unsigned char*)&ROM[address];
 	value = ROM[address];
 }
 void INDY() {
-	address = GetIndirect(op) + (unsigned char)Y;
+	address = GetIndirect(op) + Y;
+	CheckMirrors();
 	cell = (unsigned char*)&ROM[address];
 	value = ROM[address];
 }
 void ACC() {
 	value = AC;
-	cell = (unsigned char*)&AC;
+	cell = &AC;
 	address = 0;
 }
 void IND() {
-	char* adr = (char*)&address;
+	unsigned char* adr = (unsigned char*)&address;
 	if ((op & 0xff) == 0xff) {
 		adr[0] = ROM[op | 0xff];
 		adr[1] = ROM[op & (~0xff)];
@@ -101,12 +112,9 @@ void IND() {
 		adr[0] = ROM[op];
 		adr[1] = ROM[op + 1];
 	}
+	CheckMirrors();
 }
-void CheckMirrors() {
-	if (op >= 0x2000 && op < 0x4000) {
-		op = ((op-0x2000) % 8) + 0x2000;
-	}
-}
+
 struct Opcode {
 	char* name;
 	char* addressing;
@@ -136,6 +144,7 @@ struct Opcode {
 		name = "NONE";
 	}
 	void DecodeOperand() {
+		// TODO: change names to numbers and make table
 		if (addressing == "IMPL") {
 			value = 0;
 			address = 0;
@@ -178,7 +187,6 @@ struct Opcode {
 		}
 	}
 	void exec() {
-		// Get operand based on size
 		switch (length) {
 		case 2:
 			GetOperand();
@@ -187,11 +195,8 @@ struct Opcode {
 			GetOperands();
 			break;
 		}		
-		CheckMirrors();
 		DecodeOperand();
-
 		func();
-		//cout << "Value: " << (int)value << " Address: " << address << endl;
 	}
 };
 Opcode opcodes[255];
@@ -219,7 +224,6 @@ short PULL16() {
 	if (SP >= 0xff) {
 		cout << "Stack is empty on pull request!" << endl;
 		system("Pause");
-		return 0xbfff;
 	}
 	short val;
 	char* v = (char*)&val;
@@ -239,9 +243,8 @@ char PULL8() {
 	return val;
 }
 
-bool ENABLE_DISASM = false;
-
 void Disasm() {
+	// wrong PC shown
 	cout << hex << PC << " : " << opcodes[opcode].name << "_" << opcodes[opcode].addressing << "(" << (int)opcode << ")" << " A:" << (int)(AC & 0xff) << " X:" << (int)(X & 0xff) << " Y:" << (int)(Y & 0xff) << " S:" << (int)(SP) << " P:" << hex << bitset<8>(F & 0xff) << endl;
 	cout << address << ":" << (int)value << endl;
 }
@@ -256,12 +259,8 @@ void Step() {
 }
 
 void NONE() {
-	if (opcode == 0x0c) {
-		
-	}
-	else {
-		
-	}
+	cout << "Used unregistered opcode: " <<hex<< opcode << endl;
+	system("pause");
 }
 
 void ADC() {
@@ -287,47 +286,28 @@ void ASL() {
 	writeOperation = true;
 }
 void BCC() {
-	if (!GetCarry()) {
-		//clk += ((PC & 0xFF00) != (RelAddr(PC, op) & 0xFF00) ? 2 : 1);
-		PC = address;
-	}
+	if (!GetCarry()) PC = address;
 }
 void BCS() {
-	// jump when carry isnt set TODO
-	if (GetCarry()) {
-		//clk += ((PC & 0xFF00) != (RelAddr(PC, op) & 0xFF00) ? 2 : 1);
-		PC = address;
-	}
+	if (GetCarry()) PC = address;
 }
 void BEQ() {
-	if (GetZero()) {
-		//clk += ((PC & 0xFF00) != (RelAddr(PC, op) & 0xFF00) ? 2 : 1);
-		PC = address;
-	}
+	if (GetZero()) PC = address;
 }
 void BIT() {
 	unsigned char temp = value & AC;
 	SetSign(value & F_SIGN);
 	SetOverflow(value & F_TRANS);
-	SetZero(temp);
+	SetZero(temp & 0xff);
 }
 void BMI() {
-	if (GetSign()) {
-		//clk += ((PC & 0xFF00) != (RelAddr(PC, op) & 0xFF00) ? 2 : 1);
-		PC = address;
-	}
+	if (GetSign()) PC = address;
 }
 void BNE() {
-	if (!GetZero()) {
-		//clk += ((PC & 0xFF00) != (RelAddr(PC, op) & 0xFF00) ? 2 : 1);
-		PC = address;
-	}
+	if (!GetZero()) PC = address;
 }
 void BPL() {
-	if (!GetSign()) {
-		//clk += ((PC & 0xFF00) != (RelAddr(PC, op) & 0xFF00) ? 2 : 1);
-		PC = address;
-	}
+	if (!GetSign()) PC = address;
 }
 void BRK() {
 	PC++;
@@ -338,16 +318,10 @@ void BRK() {
 	PC = (ROM[0xFFFE] | (ROM[0xFFFF] << 8));
 }
 void BVC() {
-	if (!GetOverflow()) {
-		//clk += ((PC & 0xFF00) != (RelAddr(PC, op) & 0xFF00) ? 2 : 1);
-		PC = address;
-	}
+	if (!GetOverflow())	PC = address;
 }
 void BVS() {
-	if (GetOverflow()) {
-		//clk += ((PC & 0xFF00) != (RelAddr(PC, op) & 0xFF00) ? 2 : 1);
-		PC = address;
-	}
+	if (GetOverflow()) PC = address;
 }
 void CLC() {
 	SetCarry(0);
@@ -364,67 +338,59 @@ void CLV() {
 void CMP() {
 	unsigned int temp = AC - value;
 	SetCarry(AC >= value);
-	SetSign(temp);
+	SetSign(temp&F_SIGN);
 	SetZero(temp & 0xff);
 }
 void CPX() {
 	unsigned int temp = X - value;
 	SetCarry(X >= value);
-	SetSign(temp);
+	SetSign(temp&F_SIGN);
 	SetZero(temp & 0xff);
 }
 void CPY() {
 	unsigned int temp = Y - value;
 	SetCarry(Y >= value);
-	SetSign(temp);
+	SetSign(temp&F_SIGN);
 	SetZero(temp & 0xff);
 }
 void DEC() {
 	value = (value - 1) & 0xff;
-	SetSign(value);
+	SetSign(value&F_SIGN);
 	SetZero(value);
 	*cell = value;
 	writeOperation = true;
 }
 void DEX() {
-	unsigned src = X;
-	src = (src - 1) & 0xff;
-	SetSign(src);
-	SetZero(src);
-	X = (src);
+	X--;
+	SetSign(X&F_SIGN);
+	SetZero(X);
 }
 void DEY() {
-	unsigned src = Y;
-	src = (src - 1) & 0xff;
-	SetSign(src);
-	SetZero(src);
-	Y = (src);
+	Y--;
+	SetSign(Y&F_SIGN);
+	SetZero(Y);
 }
 void EOR() {
 	AC ^= value;
-	SetSign(AC);
+	SetSign(AC&F_SIGN);
 	SetZero(AC);
 }
 void INC() {
 	value = (value + 1) & 0xff;
-	SetSign(value);
+	SetSign(value&F_SIGN);
 	SetZero(value);
 	*cell = value;
 	writeOperation = true;
 }
 void INX() {
-	unsigned src = X;
-	src = (src + 1) & 0xff;
-	SetSign(src);
-	SetZero(src);
-	X = (src);
+	X++;
+	SetSign(X&F_SIGN);
+	SetZero(X);
 }
 void INY() {
-	unsigned src = Y;
-	src = (src + 1) & 0xff;
-	SetSign(src);
-	SetZero(src);
-	Y = (src);
+	Y++;
+	SetSign(Y&F_SIGN);
+	SetZero(Y);
 }
 void JMP() {
 	PC = address;
@@ -434,19 +400,19 @@ void JSR() {
 	PC = address;
 }
 void LDA() {
-	SetSign(value & 0xFF);
-	SetZero(value & 0xFF);
 	AC = value;
+	SetSign(AC&F_SIGN);
+	SetZero(AC);
 }
 void LDX() {
 	X = value;
-	SetSign(value);
-	SetZero(value);
+	SetSign(X&F_SIGN);
+	SetZero(X&F_SIGN);
 }
 void LDY() {
 	Y = value;
-	SetSign(value);
-	SetZero(value);
+	SetSign(Y&F_SIGN);
+	SetZero(Y);
 }
 void LSR() {
 	SetCarry(value & 1);
@@ -472,8 +438,8 @@ void PHP() {
 }
 void PLA() {
 	AC = PULL8();
-	SetSign(AC & 0xff);
-	SetZero(AC & 0xff);
+	SetSign(AC&F_SIGN);
+	SetZero(AC);
 }
 void PLP() {
 	F = PULL8();
@@ -483,7 +449,7 @@ void ROL() {
 	value <<= 1;
 	if (GetCarry()) value |= 0b1;
 	SetCarry(carry);
-	SetSign(value);
+	SetSign(value&F_SIGN);
 	SetZero(value);
 	*cell = value;
 	writeOperation = true;
@@ -493,7 +459,7 @@ void ROR() {
 	value >>= 1;
 	if (GetCarry()) value |= 0b10000000;
 	SetCarry(carry);
-	SetSign(value);
+	SetSign(value&F_SIGN);
 	SetZero(value);
 	*cell = value;
 	writeOperation = true;
@@ -507,8 +473,8 @@ void RTS() {
 	PC = address + 1;
 }
 void SBC() {
-	unsigned short temp = (unsigned char)AC - (unsigned char)value - (GetCarry() ? 0 : 1);
-	SetSign(temp);
+	unsigned short temp = AC - value - (GetCarry() ? 0 : 1);
+	SetSign(temp&F_SIGN);
 	SetZero(temp & 0xff);	/* Sign and Zero are invalid in decimal mode */
 	SetOverflow(((AC ^ temp) & 0x80) && ((AC ^ value) & 0x80));
 	SetCarry(temp < 0x100);
@@ -536,32 +502,32 @@ void STY() {
 	*cell = Y;
 }
 void TAX() {
-	SetSign(AC & 0xff);
-	SetZero(AC & 0xff);
-	X = AC&0xff;
+	SetSign(AC&F_SIGN);
+	SetZero(AC);
+	X = AC;
 }
 void TAY() {
-	SetSign(AC & 0xFF);
-	SetZero(AC & 0xff);
-	Y = AC&0xff;
+	SetSign(AC&F_SIGN);
+	SetZero(AC);
+	Y = AC;
 }
 void TSX() {
-	X = SP & 0xff;
-	SetSign(X & 0xff);
-	SetZero(X & 0xff);
+	X = SP;
+	SetSign(X&F_SIGN);
+	SetZero(X);
 }
 void TXA() {
-	AC = X&0xff;
-	SetSign(AC & 0xff);
-	SetZero(AC & 0xff);
+	AC = X;
+	SetSign(AC&F_SIGN);
+	SetZero(AC);
 }
 void TXS() {
-	SP = X & 0xff;
+	SP = X;
 }
 void TYA() {
-	AC = Y & 0xff;
-	SetSign(AC & 0xff);
-	SetZero(AC & 0xff);
+	AC = Y;
+	SetSign(AC&F_SIGN);
+	SetZero(AC);
 }
 
 

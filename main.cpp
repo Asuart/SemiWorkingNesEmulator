@@ -91,7 +91,11 @@ bool GetKeyState(char key) {
 }
 
 void HandlePPU() {
-	if (address == 0x4016) {
+	if (address == 0x2002) {
+		ROM[0x2002] &= ~0x80;
+		ROM[0x2002] &= ~0x40;
+	}
+	else if (address == 0x4016) {
 		static char readKeyNum = 0;
 		if (writeOperation && !(ROM[0x4016] & 1)) {
 			readKeyNum = 0;
@@ -104,24 +108,15 @@ void HandlePPU() {
 		}
 	}
 	else if (address == 0x2006) {
-		if (lowVramPointer) {
-			_vramPointer[1] = ROM[0x2006];
-		}
-		else {
-			_vramPointer[0] = ROM[0x2006];
-			vramPointer = tempVramPointer;
-		}
+		if (lowVramPointer) _vramPointer[1] = ROM[0x2006];
+		else _vramPointer[0] = ROM[0x2006];
 		lowVramPointer = !lowVramPointer;
 	}
 	else if (address == 0x2007) {
-		if (vramPointer >= 0x4000) {
-			vramPointer = vramPointer % 0x4000;
-		}
-		VROM[vramPointer] = ROM[0x2007];
-
-		if (GetIncrementMode()) {
-			vramPointer += 32;
-		}
+		if (vramPointer >= 0x4000) vramPointer = vramPointer % 0x4000;
+		if(writeOperation) VROM[vramPointer] = ROM[0x2007];
+		ROM[0x2007] = VROM[vramPointer];
+		if (GetIncrementMode()) vramPointer += 32;
 		else vramPointer++;
 	}
 	else if (address == 0x4014) {
@@ -143,15 +138,14 @@ void HandlePPU() {
 		toggleScroll = !toggleScroll;
 	}
 	writeOperation = false;
-	ROM[0x2007] = VROM[vramPointer];
 	ROM[0x2003] = OAMAddress;
 }
 
 void Run(int numCycles) {
 	CyclesDown += numCycles;
-	int a;
 	while (CyclesDown > 0) {
 		cycle++;
+
 		Step();
 		HandlePPU();
 	}
@@ -161,18 +155,65 @@ void RenderBG() {
 	CurPalette = BGPalette;
 	int line = scanline % 8;
 	int numY = scanline >> 3;
+
+	// base none scrolling render
+	/*
+	for (int p = 0; p < 4; p++) {
 	for (int i = 0; i < 32; i++) {
-		curColorSet = pages[GetCurPage()].params[(numY / 4) * 8 + i / 4];
+	curColorSet = pages[p].params[(numY / 4) * 8 + i / 4];
+	curColorSet = (curColorSet >> (((((i % 4)) / 2) | (((numY % 4) / 2) << 1)) * 2)) & 0b11;
+	spriteList[GetBGSpriteList()].DrawLine(pages[p].data[numY * 32 + i], line, (pageSprites[p] + (scanline * 256 * 3 + i * 8 * 3)));
+	}
+	}*/
+
+	// fine scroll wrong colors
+	/*
+	char pg1 = GetCurPage() & 1;
+	char pg2;
+	if (pg1) pg2 = 0;
+	else pg2 = 1;
+
+	char fullLine[32 * 8 * 3 * 2];
+	for (int i = 0; i < 32; i++) {
+	curColorSet = pages[pg1].params[(numY / 4) * 8 + i / 4];
+	curColorSet = (curColorSet >> (((((i % 4)) / 2) | (((numY % 4) / 2) << 1)) * 2)) & 0b11;
+	spriteList[GetBGSpriteList()].DrawLine(pages[pg1].data[numY * 32 + i], line, (fullLine + (i * 8 * 3)));
+	}
+	for (int i = 32; i < 64; i++) {
+	curColorSet = pages[pg2].params[(numY / 4) * 8 + (i-32) / 4];
+	curColorSet = (curColorSet >> (((((i % 4)) / 2) | (((numY % 4) / 2) << 1)) * 2)) & 0b11;
+	spriteList[GetBGSpriteList()].DrawLine(pages[pg2].data[numY * 32 + i - 32], line, (fullLine + (i * 8 * 3)));
+	}
+	for (int i = scrollX, j = 0; i < (scrollX + 256); i++, j++) {
+	screenSpriteData[scanline * 256 * 3 + j * 3] = fullLine[i * 3];
+	screenSpriteData[scanline * 256 * 3 + j * 3 + 1] = fullLine[i * 3 + 1];
+	screenSpriteData[scanline * 256 * 3 + j * 3 + 2] = fullLine[i * 3 + 2];
+	}
+	*/
+
+	// now working per tile scroll
+	char tileOffset = scrollX >> 3;
+	char tileArea = 32 - tileOffset;
+
+	for (int i = 0; i < tileArea; i++) {
+		curColorSet = pages[0].params[(numY / 4) * 8 + i / 4];
 		curColorSet = (curColorSet >> (((((i % 4)) / 2) | (((numY % 4) / 2) << 1)) * 2)) & 0b11;
-		spriteList[GetBGSpriteList()].DrawLine(pages[GetCurPage()].data[numY * 32 + i], line, (screenSpriteData + (scanline * 256 *3  + i * 8 * 3)));
+		spriteList[GetBGSpriteList()].DrawLine(pages[0].data[numY * 32 + tileOffset + i], line, (screenSpriteData + (scanline * 256 * 3 + i * 8 * 3)));
+	}
+	for (int i = tileArea; i < 32; i++) {
+		curColorSet = pages[0].params[(numY / 4) * 8 + i / 4];
+		curColorSet = (curColorSet >> (((((i % 4)) / 2) | (((numY % 4) / 2) << 1)) * 2)) & 0b11;
+		spriteList[GetBGSpriteList()].DrawLine(pages[0].data[numY * 32 + i - tileArea], line, (screenSpriteData + (scanline * 256 * 3 + i * 8 * 3)));
 	}
 }
 void EvaluateSPR() {
-	// no rendering sprites yet
+	// sprite evaluation not requiered
 }
+
 void RenderSPR() {
+	SetSprite0(1);
 	CurPalette = SPRPalette;
-	for (int i = 0; i < 256; i+=4) {
+	for (int i = 0; i < 256; i += 4) {
 		curColorSet = (OAM[i + 2] & 0b11);
 		//vertical mirroring
 		if (OAM[i + 2] & 0x80) {
@@ -195,8 +236,8 @@ void RenderSPR() {
 		}
 		else {
 			// if sprite is on scanline
-			if (OAM[i] >= scanline-8 && OAM[i] < scanline ) {
-				int line = (scanline - OAM[i]-1);
+			if (OAM[i] >= scanline - 8 && OAM[i] < scanline) {
+				int line = (scanline - OAM[i] - 1);
 				if (OAM[i] + line < 240 && OAM[i] + line > 0) {
 					if (OAM[i + 2] & 0b1000000) {
 						if (scanline * 256 * 3 + OAM[i + 3] * 3 <= 256 * 240 * 3 - 24) {
@@ -227,8 +268,6 @@ void PresentFrame() {
 	glGenerateMipmap(GL_TEXTURE_2D);
 	glDrawArrays(GL_TRIANGLES, 0, 6);
 
-	ROM[0x2002] |= 0x80;
-
 	glfwSwapBuffers(mainWindow);
 
 	for (int i = 0; i < 256 * 240 * 3; i++) {
@@ -236,7 +275,7 @@ void PresentFrame() {
 	}
 }
 void PreRender() {
-	SetWriteLock(1);
+	SetWriteLock(0);
 }
 void RenderScanline() {
 	if (GetBGRender()) {
@@ -244,7 +283,7 @@ void RenderScanline() {
 	}
 	if (GetSPRRender()) {
 		EvaluateSPR();
-		RenderSPR();	
+		RenderSPR();
 	}
 }
 void PostRender() {
@@ -264,7 +303,8 @@ void DuringVBlank() {
 void EndVBlank() {
 	SetVBlank(0);
 	SetSprite0(0);
-	SetWriteLock(0);
+	SetWriteLock(0); //disable
+	SetOverflow(0);
 }
 
 void HBlank() {
@@ -296,42 +336,44 @@ void NextLine() {
 	HBlank();
 }
 
-void DrawAllPages() {
-	for (int i = 0; i < 4; i++) {
-		for (int j = 0; j < 32; j++) {
-			
+void CheckPause() {
+	if (glfwGetKey(mainWindow, GLFW_KEY_SPACE)) {
+		cout << "pause" << endl;
+		ENABLE_BREAK = true;
+		while (!glfwGetKey(mainWindow, GLFW_KEY_Q)) {
+			if (glfwGetKey(mainWindow, GLFW_KEY_S)) {
+
+			}
+			glfwPollEvents();
 		}
+		cout << "unpause" << endl;
 	}
 }
-
-
 
 int main() {
 	InitWindow();
 	InitGL();
-	LoadROM("");
+	LoadROM();
 
 	spriteList[0] = SpriteList(VROM);
 	spriteList[1] = SpriteList(VROM + 0x1000);
 	palette.LoadColorTable();
-	CurPalette = BGPalette;
 	LoadOpcodesTable();
 
 	// pressets
-	PC = 0x8000;
 	SP = 0xff;
 	F = 0x34;
 	cycle = 0;
 	vramPointer = 0;
 	for (int i = 0; i < 0x800; i++)
-		ROM[i] = 0x0;
+		ROM[i] = 0xff;
 	for (int i = 0; i < 256; i++) {
-		OAM[i] = 0;
+		OAM[i] = 0xff;
 	}
-	
+
 	// get nmi address
 	char* p = (char*)&NMI_ADDR;
-	p[0] =ROM[0xfffa];
+	p[0] = ROM[0xfffa];
 	p[1] = ROM[0xfffb];
 	//get reset address
 	p = (char*)&RESET_ADDR;
@@ -339,31 +381,16 @@ int main() {
 	p[1] = ROM[0xfffd];
 	PC = RESET_ADDR;
 
-	UNSET_BREAK();
-	UNSET_1();
-
 	glBindVertexArray(screenVAO);
 	glBindBuffer(GL_ARRAY_BUFFER, screenPlaneObject);
 	glBindTexture(GL_TEXTURE_2D, screenSprite);
 
-	/////////////
-	EnableDisasm = false;
 	while (true) {
 		NextLine();
-		if (glfwGetKey(mainWindow, GLFW_KEY_SPACE)) {
-			cout << "pause" << endl;
-			ENABLE_BREAK = true;
-			while (!glfwGetKey(mainWindow, GLFW_KEY_Q)) {
-				if (glfwGetKey(mainWindow, GLFW_KEY_S)) {
 
-				}
-				glfwPollEvents();
-			}
-			cout << "unpause" << endl;
-		}
+		CheckPause();
 
 		glfwPollEvents();
 	}
-	system("pause");
 	return 0;
 }
