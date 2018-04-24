@@ -17,23 +17,22 @@ char* CurPalette = BGPalette;
 
 unsigned short NMI_ADDR;
 unsigned short RESET_ADDR;
+unsigned short BREAK_ADDR;
 
 struct ROMinfo {
 	bool fourPage;
 	bool verticalMirroring;
+	bool hasTrainer;
+	bool PALmode;
+
+	unsigned char CHRROMcount;
+	unsigned char PRGROMcount;
+	unsigned char PRGRAMcount;
+	unsigned char mapper;
 };
 ROMinfo currentROM;
 
-void LoadROM(char* path = "F:/dk.nes") {
-	char b0 = 0b1;
-	char b1 = 0b10;
-	char b2 = 0b100;
-	char b3 = 0b1000;
-	char b4 = 0b10000;
-	char b5 = 0b100000;
-	char b6 = 0b1000000;
-	char b7 = 0b10000000;
-
+void LoadROM(char* path = "F:/bomberman.nes") {
 	std::ifstream reader;
 	reader.open(path, std::ifstream::binary);
 	if (!reader) {
@@ -54,19 +53,26 @@ void LoadROM(char* path = "F:/dk.nes") {
 	char CHRROMcount = ROMdata[5];
 	char PRGROMcount = ROMdata[4];
 
-	currentROM.fourPage = ROMdata[6] & b3;
-	currentROM.verticalMirroring = !(ROMdata[6] & b0);
+	currentROM.fourPage = ROMdata[6] & 4;
+	currentROM.verticalMirroring = (ROMdata[6] & 1);
+	currentROM.PALmode = ROMdata[9] & 1;
+	currentROM.hasTrainer = ROMdata[6] & 2;
+	currentROM.PRGROMcount = ROMdata[4];
+	currentROM.CHRROMcount = ROMdata[5];
+	currentROM.PRGRAMcount = ROMdata[8];
+	currentROM.mapper = mapper;
+
 
 	std::cout << "ROM size: " << ROMsize << std::endl;
 	std::cout << "PRG ROMs: " << (int)ROMdata[4] << std::endl;
 	std::cout << "CHR ROMs: " << (int)ROMdata[5] << std::endl;
 	std::cout << "PRG RAMs: " << (int)ROMdata[8] << std::endl;
 	std::cout << "Mapper: " << (int)mapper << std::endl;
-	std::cout << "Scrolling: " << ((ROMdata[6] & b3) ? "4 page" : (((int)ROMdata[6] & b0) ? "vertical" : "horizontal")) << std::endl;
-	std::cout << "Cart has PRGRAM: " << ((int)ROMdata[6] & b1) << std::endl;
-	std::cout << "Cart has Trainer: " << ((int)ROMdata[6] & b2) << std::endl;
-	std::cout << "TV system: " << (((int)ROMdata[9] & b0)? "PAL" : "NTSC" )<< std::endl;
-	if (ROMdata[9] & b0) {
+	std::cout << "Scrolling: " << ((ROMdata[6] & 4) ? "4 page" : (((int)ROMdata[6] & 1) ? "vertical" : "horizontal")) << std::endl;
+	std::cout << "Cart has PRGRAM: " << ((int)ROMdata[6] & 2) << std::endl;
+	std::cout << "Cart has Trainer: " << ((int)ROMdata[6] & 4) << std::endl;
+	std::cout << "TV system: " << (((int)ROMdata[9] & 1)? "PAL" : "NTSC" )<< std::endl;
+	if (ROMdata[9] & 1) {
 		cout << "PAL not supported" << endl;
 		system("pause");
 	}

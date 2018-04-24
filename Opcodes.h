@@ -3,6 +3,8 @@
 #include "Registers.h"
 #include <bitset>
 
+unsigned short lPC;// todo: delete
+
 void GetOpcode() {
 	opcode = ROM[PC];
 	PC++;
@@ -20,7 +22,10 @@ void GetOperands() {
 
 // work but not work
 void CheckMirrors() {
-	if (address >= 0x2000 && address < 0x4000) {
+	if (address >= 0x800 && address < 0x2000) {
+		address %= 0x800;
+	}
+	else if (address >= 0x2000 && address < 0x4000) {
 		address = ((address - 0x2000) % 8) + 0x2000;
 	}
 }
@@ -250,6 +255,7 @@ void Disasm() {
 }
 
 void Step() {
+	lPC = PC;
 	GetOpcode();
 #ifdef ASM
 	Disasm();
@@ -259,8 +265,7 @@ void Step() {
 }
 
 void NONE() {
-	cout << "Used unregistered opcode: " <<hex<< opcode << endl;
-	system("pause");
+	cout << "Used unregistered opcode: " <<hex<< opcode<<" at "<< PC <<" after " << lPC<<" cycle: "<<cycle << endl;
 }
 
 void ADC() {
@@ -312,10 +317,11 @@ void BPL() {
 void BRK() {
 	PC++;
 	PUSH16(PC);
-	SetBreak(1);             /* Set BFlag before pushing */
+	SetBreak(1);
+
 	PUSH8(F);
 	SetInterrupt(1);
-	PC = (ROM[0xFFFE] | (ROM[0xFFFF] << 8));
+	PC = BREAK_ADDR;
 }
 void BVC() {
 	if (!GetOverflow())	PC = address;
@@ -407,7 +413,7 @@ void LDA() {
 void LDX() {
 	X = value;
 	SetSign(X&F_SIGN);
-	SetZero(X&F_SIGN);
+	SetZero(X);
 }
 void LDY() {
 	Y = value;
@@ -434,6 +440,7 @@ void PHA() {
 	PUSH8(AC);
 }
 void PHP() {
+	F |= (1 << 5);
 	PUSH8(F);
 }
 void PLA() {
@@ -531,7 +538,7 @@ void TYA() {
 }
 
 
-#define UNOFFICIAL
+//#define UNOFFICIAL
 #ifdef UNOFFICIAL
 // Unofficial opcodes
 void DOP() {
@@ -574,6 +581,7 @@ void ATX() {
 	SetZero(AC);
 }
 void AXA() {
+	cout << "AXA opcode is unofficial "<<hex<<PC << endl;
 	system("pause");
 	*cell = (AC & X & 7);
 }
@@ -604,6 +612,7 @@ void ISC() {
 	AC = (temp & 0xff);
 }
 void KIL() {
+	cout << "KIL command is unofficial" << endl;
 	system("pause");
 }
 void LAR() {
@@ -660,11 +669,15 @@ void SRE() {
 	SetZero(AC);
 }
 void SXA() {
+	cout << "SXA command is unofficial" << endl;
+
 	system("pause");
 
 
 }
 void SYA() {
+	cout << "SYA command is unofficial" << endl;
+
 	system("pause");
 
 }
@@ -672,11 +685,15 @@ void TOP() {
 	// ok
 }
 void XAA() {
+	cout << "XAA command is unofficial" << endl;
+
 	system("pause");
 	TXA();
 	AND();
 }
 void XAS() {
+	cout << "XAS command is unofficial" << endl;
+
 	system("pause");
 }
 #endif

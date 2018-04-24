@@ -5,8 +5,10 @@
 #include "ShaderLib.h"
 #include "Opcodes.h"
 
-
 using namespace glm;
+bool TopSPR = false;
+bool drawSprite = false;
+
 struct Vertex {
 	vec2 pos;
 	vec2 tex;
@@ -44,8 +46,65 @@ const int NTSC_VIEW_HEIGHT = 224;
 const int SPRITE_SIZE = 8;
 const int SPRITE_LIST_SIZE = 16;
 
+const int PAGE_CHAR_SIZE = 960;
+const int PAGE_PARAMS_SIZE = 64;
+int countPages = 0;
+
+
+
 GLFWwindow* mainWindow;
-const int SCREEN_SPRITE_SIZE = SCREEN_WIDTH * SCREEN_HEIGHT * 3;
+const int SCREEN_SPRITE_SIZE = SCREEN_WIDTH * SCREEN_HEIGHT * 4;
+
+unsigned char GetCurPage() {
+	return ROM[0x2000] & 0b11;
+}
+bool GetVRAMIncrement() {
+	return ROM[0x2000] & (1 << 2);
+}
+bool GetSPRPattern() {
+	return ROM[0x2000] & (1 << 3);
+}
+bool GetBGPattern() {
+	return ROM[0x2000] & (1 << 4);
+}
+bool GetSPRSize() {
+	return ROM[0x2000] & (1 << 5);
+}
+bool GetNMIEnabled() {
+	return ROM[0x2000] & (1 << 7);
+}
+bool GetLeftLineBG() {
+	return ROM[0x2001] & (1 << 1);
+}
+bool GetLeftLineSPR() {
+	return ROM[0x2001] & (1 << 2);
+}
+bool GetShowBG() {
+	return ROM[0x2001] & (1 << 3);
+}
+bool GetShowSPR() {
+	return ROM[0x2001] & (1 << 4);
+}
+bool GetVBlank() {
+	return ROM[0x2002] &= (1 << 7);
+}
+
+void SetSpriteOverflow(bool flag) {
+	if (flag) ROM[0x2002] |= (1 << 5);
+	else ROM[0x2002] &= ~(1 << 5);
+}
+void SetSpriteHit(bool flag) {
+	if (flag) ROM[0x2002] |= (1 << 6);
+	else ROM[0x2002] &= ~(1 << 6);
+}
+void SetVBlank(bool flag) {
+	if (flag) ROM[0x2002] |= (1 << 7);
+	else ROM[0x2002] &= ~(1 << 7);
+}
+void SetWriteLock(bool flag) {
+	if (flag) ROM[0x2002] |= (1 << 4);
+	else ROM[0x2002] &= ~(1 << 4);
+}
 
 bool InitWindow() {
 	if (!glfwInit()) {
@@ -101,10 +160,8 @@ bool InitGL() {
 }
 
 struct Color {
-	char r;
-	char g;
-	char b;
-	Color(char _r = 0, char _g = 0, char _b = 0) {
+	unsigned char r, g, b;
+	Color(unsigned char _r = 0, unsigned char _g = 0, unsigned char _b = 0) {
 		r = _r;
 		g = _g;
 		b = _b;
@@ -119,7 +176,7 @@ struct Palette {
 		LoadColorTable();
 	}
 	void LoadColorTable() {
-		for (int i = 0; i < 255; i++) {
+		for (int i = 0; i < 256; i++) {
 			colorTable[i] = Color(0, 0, 0);
 		}
 		// 0x0X
@@ -189,7 +246,6 @@ struct Sprite {
 	unsigned char pixels[SPRITE_SIZE][SPRITE_SIZE];
 
 	Sprite(char* chrrom) {
-		char MASK = 0b10000000;
 		for (int i = 0; i < SPRITE_SIZE; i++) {
 			char v1 = chrrom[i];
 			char v2 = chrrom[i + 8];
@@ -202,53 +258,86 @@ struct Sprite {
 	}
 	Sprite() { }
 
-	void DrawLine(char line, char* sprite, unsigned char start, unsigned char end) {
-		for (int i = start; i < end; i++) {
-			if (pixels[line][i] != 0) {
-				Color col = palette.GetColor(CurPalette[((curColorSet << 2) | (pixels[line][i]))]);
-				sprite[i * 3] = col.r;
-				sprite[i * 3 + 1] = col.g;
-				sprite[i * 3 + 2] = col.b;
+	void DrawLine(char line, char* sprite) {
+		for (int i = 0; i < 8; i++) {
+			if (pixels[line][i] > 0) {
+				if (!drawSprite) {
+					Color col = palette.GetColor(CurPalette[(curColorSet << 2) | (pixels[line][i])]);
+					sprite[i * 4] = col.r;
+					sprite[i * 4 + 1] = col.g;
+					sprite[i * 4 + 2] = col.b;
+					sprite[i * 4 + 3] = 1;
+				}
+				else {
+					if (sprite[i * 4 + 3] == 0) {
+						SetSpriteHit(1);
+						Color col = palette.GetColor(CurPalette[(curColorSet << 2) | (pixels[line][i])]);
+						sprite[i * 4] = col.r;
+						sprite[i * 4 + 1] = col.g;
+						sprite[i * 4 + 2] = col.b;
+					}
+					else if (TopSPR) {	
+						SetSpriteHit(1);
+						Color col = palette.GetColor(CurPalette[(curColorSet << 2) | (pixels[line][i])]);
+						sprite[i * 4] = col.r;
+						sprite[i * 4 + 1] = col.g;
+						sprite[i * 4 + 2] = col.b;
+					}
+				}
 			}
 		}
 	}
 	void DrawLineMirrored(char line, char* sprite) {
 		for (int i = 0; i < 8; i++) {
 			if (pixels[line][7 - i] > 0) {
-				Color col = palette.GetColor(CurPalette[(curColorSet << 2) | (pixels[line][7 - i])]);
-				sprite[i * 3] = col.r;
-				sprite[i * 3 + 1] = col.g;
-				sprite[i * 3 + 2] = col.b;
+				if (!drawSprite) {
+					Color col = palette.GetColor(CurPalette[(curColorSet << 2) | (pixels[line][7 - i])]);
+					sprite[i * 4] = col.r;
+					sprite[i * 4 + 1] = col.g;
+					sprite[i * 4 + 2] = col.b;
+					sprite[i * 4 + 3] = 1;
+				}
+				else {
+					if (sprite[i * 4 + 3] == 0) {
+						SetSpriteHit(1);
+						Color col = palette.GetColor(CurPalette[(curColorSet << 2) | (pixels[line][7 - i])]);
+						sprite[i * 4] = col.r;
+						sprite[i * 4 + 1] = col.g;
+						sprite[i * 4 + 2] = col.b;
+					}
+					else if (TopSPR) {
+						SetSpriteHit(1);
+						Color col = palette.GetColor(CurPalette[(curColorSet << 2) | (pixels[line][7 - i])]);
+						sprite[i * 4] = col.r;
+						sprite[i * 4 + 1] = col.g;
+						sprite[i * 4 + 2] = col.b;
+					}
+				}
 			}
 		}
 	}
-
 };
 struct SpriteList {
-	Sprite* sprites[SPRITE_LIST_SIZE][SPRITE_LIST_SIZE];
+	Sprite sprites[SPRITE_LIST_SIZE][SPRITE_LIST_SIZE];
 	SpriteList() {}
 	SpriteList(char* chrrom) {
 		int n = 0;
 		for (int i = 0; i < SPRITE_LIST_SIZE; i++) {
 			for (int j = 0; j < SPRITE_LIST_SIZE; j++, n++) {
-				sprites[i][j] = new Sprite(chrrom + (n * 16));
+				sprites[i][j] = Sprite(chrrom + (n * 16));
 			}
 		}
 	}
 
-	void DrawLine(char tile, char line, char* sprite, unsigned char start = 0, unsigned char end = 8) {
-		sprites[(tile & 0xf0) >> 4][tile & 0xf]->DrawLine(line, sprite, start, end);
+	void DrawLine(char tile, char line, char* sprite) {
+		sprites[(tile & 0xf0) >> 4][tile & 0xf].DrawLine(line, sprite);
 	}
 	void DrawLineMirrored(char tile, char line, char* sprite) {
-		sprites[(tile & 0xf0) >> 4][tile & 0xf]->DrawLineMirrored(line, sprite);
+		sprites[(tile & 0xf0) >> 4][tile & 0xf].DrawLineMirrored(line, sprite);
 	}
 };
 SpriteList spriteList[2];
 
-
-const int PAGE_CHAR_SIZE = 960;
-const int PAGE_PARAMS_SIZE = 64;
-int countPages = 0;
 struct CharPage {
 	char* data;
 	char* params;
@@ -264,38 +353,10 @@ struct CharPage {
 			for (int j = 0; j < 32; j++) {
 				char code = data[i * 32 + j];
 				for (int k = 0; k < 8; k++) {
-					spriteList[1].DrawLine(code, k, sprite + (i * 8 + k) * 256 * 3 + j * 8 * 3);
+					spriteList[1].DrawLine(code, k, sprite + (i * 8 + k) * 256 * 4 + j * 32);
 				}
 			}
 		}
 	}
 };
 CharPage pages[4];
-
-char GetCurPage() {
-	return ROM[0x2000] & 0b11;
-}
-char GetBGCharset() {
-	return (ROM[0x2000] & 0b10000) >> 4;
-}
-char GetSpriteSize() {
-	char val = (ROM[0x2000] & 0b100000) >> 5;
-	if (val) {
-		cout << "Sprites 8x16 not implemented!" << endl;
-		system("Pause");
-	}
-	return val;
-}
-
-char GetClipBG() {
-	return (ROM[0x2001] & 0b10) >> 1;
-}
-char GetClipSprites() {
-	return (ROM[0x2001] & 0b100) >> 2;
-}
-char GetShowBG() {
-	return (ROM[0x2001] & 0b1000) >> 3;
-}
-char GetShowSprites() {
-	return (ROM[0x2001] & 0b10000) >> 4;
-}
