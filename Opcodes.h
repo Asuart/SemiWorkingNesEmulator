@@ -20,6 +20,11 @@ void GetOperands() {
 	PC++;
 }
 
+void SetNZ(unsigned char value) {
+	SetSign(value);
+	SetZero(value);
+}
+
 // work but not work
 void CheckMirrors() {
 	if (address >= 0x800 && address < 0x2000) {
@@ -206,11 +211,29 @@ struct Opcode {
 };
 Opcode opcodes[255];
 
-void PUSH16(short val) {
-	if (SP <= 1) {
+enum STACK_ERROR {
+	STACK_FULL,
+	STACK_EMPTY
+};
+void StackError(STACK_ERROR err) {
+	switch(err) {
+	case STACK_FULL:
 		cout << "Stack is full on push request!" << endl;
 		system("pause");
+		break;
+	case STACK_EMPTY:
+		cout << "Stack is empty on pull request!" << endl;
+		system("pause");
+		break;
+	default:
+		cout << "Unhandled STACK error" << endl;
+		system("pause");
+		break;
 	}
+}
+
+void PUSH16(short val) {
+	if (SP <= 1) StackError(STACK_FULL);
 	char* v = (char*)&val;
 	STACK[SP] = v[1];
 	SP--;
@@ -218,18 +241,12 @@ void PUSH16(short val) {
 	SP--;
 }
 void PUSH8(char val) {
-	if (SP <= 0) {
-		cout << "Stack is full on push request!" << endl;
-		system("pause");
-	}
+	if (SP <= 0) StackError(STACK_FULL);
 	STACK[SP] = val;
 	SP--;
 }
 short PULL16() {
-	if (SP >= 0xff) {
-		cout << "Stack is empty on pull request!" << endl;
-		system("Pause");
-	}
+	if (SP >= 0xff) StackError(STACK_EMPTY);
 	short val;
 	char* v = (char*)&val;
 	SP++;
@@ -239,54 +256,42 @@ short PULL16() {
 	return val;
 }
 char PULL8() {
-	if (SP >= 0xff) {
-		cout << "Stack is empty on pull request!" << endl;
-		system("pause");
-	}
+	if (SP >= 0xff) StackError(STACK_EMPTY);
 	SP++;
-	char val = STACK[SP];
-	return val;
+	return STACK[SP];
 }
 
 void Disasm() {
-	// wrong PC shown
-	cout << hex << PC << " : " << opcodes[opcode].name << "_" << opcodes[opcode].addressing << "(" << (int)opcode << ")" << " A:" << (int)(AC & 0xff) << " X:" << (int)(X & 0xff) << " Y:" << (int)(Y & 0xff) << " S:" << (int)(SP) << " P:" << hex << bitset<8>(F & 0xff) << endl;
+	cout << hex << lPC << " : " << opcodes[opcode].name << "_" << opcodes[opcode].addressing << "(" << (int)opcode << ")" << " A:" << (int)(AC & 0xff) << " X:" << (int)(X & 0xff) << " Y:" << (int)(Y & 0xff) << " S:" << (int)(SP) << " P:" << hex << bitset<8>(F & 0xff) << endl;
 	cout << address << ":" << (int)value << endl;
 }
 
 void Step() {
-	lPC = PC;
+	lPC = PC; // todo: delete
 	GetOpcode();
-#ifdef ASM
-	Disasm();
-#endif
 	opcodes[opcode].exec();
 	CyclesDown -= opcodes[opcode].cycles;
 }
 
 void NONE() {
-	cout << "Used unregistered opcode: " <<hex<< opcode<<" at "<< PC <<" after " << lPC<<" cycle: "<<cycle << endl;
+	//cout << "Used unregistered opcode: " <<hex<< opcode<<" at "<< PC <<" after " << lPC<<" cycle: "<<cycle << endl;
 }
 
 void ADC() {
 	unsigned short temp = value + (unsigned char)AC + (GetCarry() ? 1 : 0);
-	SetCarry(temp > 0xff);
-	SetZero(temp & 0xff);
-	SetSign(temp & F_SIGN);
 	SetOverflow(!((AC ^ value) & 0x80) && ((AC ^ temp) & 0x80));
-	AC = temp;
+	AC = temp & 0xff;
+	SetCarry(temp > 0xff);
+	SetNZ(AC);
 }
 void AND() {
 	AC &= value;
-	SetSign(AC);
-	SetZero(AC);
+	SetNZ(AC);
 }
 void ASL() {
 	SetCarry(value & 0x80);
-	value <<= 1;
-	value &= 0xff;
-	SetSign(value);
-	SetZero(value);
+	value = (value << 1); // & ~1
+	SetNZ(value);
 	*cell = value;
 	writeOperation = true;
 }
@@ -300,10 +305,9 @@ void BEQ() {
 	if (GetZero()) PC = address;
 }
 void BIT() {
-	unsigned char temp = value & AC;
-	SetSign(value & F_SIGN);
-	SetOverflow(value & F_TRANS);
-	SetZero(temp & 0xff);
+	SetSign(value);
+	SetOverflow(value & 0x40);
+	SetZero(AC & value);
 }
 void BMI() {
 	if (GetSign()) PC = address;
@@ -318,7 +322,6 @@ void BRK() {
 	PC++;
 	PUSH16(PC);
 	SetBreak(1);
-
 	PUSH8(F);
 	SetInterrupt(1);
 	PC = BREAK_ADDR;
@@ -342,61 +345,51 @@ void CLV() {
 	SetOverflow(0);
 }
 void CMP() {
-	unsigned int temp = AC - value;
-	SetCarry(AC >= value);
-	SetSign(temp&F_SIGN);
-	SetZero(temp & 0xff);
+	unsigned short temp = AC - value;
+	SetCarry(temp < 0x100);
+	SetNZ(temp & 0xff);
 }
 void CPX() {
-	unsigned int temp = X - value;
-	SetCarry(X >= value);
-	SetSign(temp&F_SIGN);
-	SetZero(temp & 0xff);
+	unsigned short temp = X - value;
+	SetCarry(temp < 0x100);
+	SetNZ(temp&0xff);
 }
 void CPY() {
-	unsigned int temp = Y - value;
-	SetCarry(Y >= value);
-	SetSign(temp&F_SIGN);
-	SetZero(temp & 0xff);
+	unsigned short temp = Y - value;
+	SetCarry(temp < 0x100);
+	SetNZ(temp&0xff);
 }
 void DEC() {
-	value = (value - 1) & 0xff;
-	SetSign(value&F_SIGN);
-	SetZero(value);
+	value--;
+	SetNZ(value);
 	*cell = value;
 	writeOperation = true;
 }
 void DEX() {
 	X--;
-	SetSign(X&F_SIGN);
-	SetZero(X);
+	SetNZ(X);
 }
 void DEY() {
 	Y--;
-	SetSign(Y&F_SIGN);
-	SetZero(Y);
+	SetNZ(Y);
 }
 void EOR() {
 	AC ^= value;
-	SetSign(AC&F_SIGN);
-	SetZero(AC);
+	SetNZ(AC);
 }
 void INC() {
-	value = (value + 1) & 0xff;
-	SetSign(value&F_SIGN);
-	SetZero(value);
+	value++;
+	SetNZ(value);
 	*cell = value;
 	writeOperation = true;
 }
 void INX() {
 	X++;
-	SetSign(X&F_SIGN);
-	SetZero(X);
+	SetNZ(X);
 }
 void INY() {
 	Y++;
-	SetSign(Y&F_SIGN);
-	SetZero(Y);
+	SetNZ(Y);
 }
 void JMP() {
 	PC = address;
@@ -407,85 +400,79 @@ void JSR() {
 }
 void LDA() {
 	AC = value;
-	SetSign(AC&F_SIGN);
-	SetZero(AC);
+	SetNZ(AC);
 }
 void LDX() {
 	X = value;
-	SetSign(X&F_SIGN);
-	SetZero(X);
+	SetNZ(X);
 }
 void LDY() {
 	Y = value;
-	SetSign(Y&F_SIGN);
-	SetZero(Y);
+	SetNZ(Y);
 }
 void LSR() {
 	SetCarry(value & 1);
-	value = (value >> 1) & 0x7F;
-	SetSign(0);
-	SetZero(value);
+	value = (value >> 1); // & ~0x80
+	SetNZ(value);
 	*cell = value;
 	writeOperation = true;
 }
 void NOP() {
-
+	// Nothing
 }
 void ORA() {
 	AC |= value;
-	SetSign(AC);
-	SetZero(AC);
+	SetNZ(AC);
 }
 void PHA() {
 	PUSH8(AC);
 }
 void PHP() {
-	F |= (1 << 5);
+	//F |= (1 << 5); // set on pop in "other emulator"
 	PUSH8(F);
 }
 void PLA() {
 	AC = PULL8();
-	SetSign(AC&F_SIGN);
-	SetZero(AC);
+	SetNZ(AC);
 }
 void PLP() {
 	F = PULL8();
+	F |= 32; // from "other emulator"
 }
 void ROL() {
 	bool carry = value & 0x80;
 	value <<= 1;
 	if (GetCarry()) value |= 0b1;
+	else value &= ~0b1;
 	SetCarry(carry);
-	SetSign(value&F_SIGN);
-	SetZero(value);
+	SetNZ(value);
 	*cell = value;
 	writeOperation = true;
 }
 void ROR() {
-	bool carry = value & 0x01;
+	bool carry = value & 1;
 	value >>= 1;
 	if (GetCarry()) value |= 0b10000000;
+	else value &= ~0b10000000;
 	SetCarry(carry);
-	SetSign(value&F_SIGN);
-	SetZero(value);
+	SetNZ(value);
 	*cell = value;
 	writeOperation = true;
 }
 void RTI() {
 	F = PULL8();
+//	F |= 32; // copy from "other emulator"
 	PC = PULL16();
 }
 void RTS() {
-	address = PULL16();
-	PC = address + 1;
+	PC = PULL16() + 1;
 }
 void SBC() {
 	unsigned short temp = AC - value - (GetCarry() ? 0 : 1);
-	SetSign(temp&F_SIGN);
-	SetZero(temp & 0xff);	/* Sign and Zero are invalid in decimal mode */
 	SetOverflow(((AC ^ temp) & 0x80) && ((AC ^ value) & 0x80));
 	SetCarry(temp < 0x100);
 	AC = (temp & 0xff);
+	SetNZ(AC);
 }
 void SEC() {
 	SetCarry(1);
@@ -497,48 +484,43 @@ void SEI() {
 	SetInterrupt(1);
 }
 void STA() {
-	writeOperation = true;
 	*cell = AC;
+	writeOperation = true;
 }
 void STX() {
-	writeOperation = true;
 	*cell = X;
+	writeOperation = true;
 }
 void STY() {
-	writeOperation = true;
 	*cell = Y;
+	writeOperation = true;
 }
 void TAX() {
-	SetSign(AC&F_SIGN);
-	SetZero(AC);
 	X = AC;
+	SetNZ(X);
 }
 void TAY() {
-	SetSign(AC&F_SIGN);
-	SetZero(AC);
 	Y = AC;
+	SetNZ(Y);
 }
 void TSX() {
 	X = SP;
-	SetSign(X&F_SIGN);
-	SetZero(X);
+	SetNZ(X);
 }
 void TXA() {
 	AC = X;
-	SetSign(AC&F_SIGN);
-	SetZero(AC);
+	SetNZ(AC);
 }
 void TXS() {
 	SP = X;
 }
 void TYA() {
 	AC = Y;
-	SetSign(AC&F_SIGN);
-	SetZero(AC);
+	SetNZ(AC);
 }
 
 
-//#define UNOFFICIAL
+#define UNOFFICIAL
 #ifdef UNOFFICIAL
 // Unofficial opcodes
 void DOP() {
@@ -763,12 +745,6 @@ void LoadOpcodesTable() {
 	opcodes[0xbf] = Opcode("LAX", "ABSY", 0xbf, LAX, 3);
 	opcodes[0xa3] = Opcode("LAX", "INDX", 0xa3, LAX, 2);
 	opcodes[0xb3] = Opcode("LAX", "INDY", 0xb3, LAX, 2);
-	opcodes[0x1a] = Opcode("NOP", "IMPL", 0x1a, NOP, 1);
-	opcodes[0x3a] = Opcode("NOP", "IMPL", 0x3a, NOP, 1);
-	opcodes[0x5a] = Opcode("NOP", "IMPL", 0x5a, NOP, 1);
-	opcodes[0x7a] = Opcode("NOP", "IMPL", 0x7a, NOP, 1);
-	opcodes[0xda] = Opcode("NOP", "IMPL", 0xda, NOP, 1);
-	opcodes[0xfa] = Opcode("NOP", "IMPL", 0xfa, NOP, 1);
 	opcodes[0x27] = Opcode("RLA", "ZP", 0x27, RLA, 2);
 	opcodes[0x37] = Opcode("RLA", "ZPX", 0x37, RLA, 2);
 	opcodes[0x2f] = Opcode("RLA", "ABS", 0x2f, RLA, 3);
@@ -809,8 +785,13 @@ void LoadOpcodesTable() {
 	opcodes[0xfc] = Opcode("TOP", "ABSX", 0xfc, TOP, 3);
 	opcodes[0x8b] = Opcode("XAA", "IMM", 0x8b, XAA, 2);
 	opcodes[0x9b] = Opcode("XAS", "ABSY", 0x9b, XAS, 3);
+	opcodes[0x1a] = Opcode("NOP", "IMPL", 0x1a, NOP, 1,2);
+	opcodes[0x3a] = Opcode("NOP", "IMPL", 0x3a, NOP, 1,2);
+	opcodes[0x5a] = Opcode("NOP", "IMPL", 0x5a, NOP, 1,2);
+	opcodes[0x7a] = Opcode("NOP", "IMPL", 0x7a, NOP, 1,2);
+	opcodes[0xda] = Opcode("NOP", "IMPL", 0xda, NOP, 1,2);
+	opcodes[0xfa] = Opcode("NOP", "IMPL", 0xfa, NOP, 1,2);
 #endif
-
 
 	// official
 	opcodes[0x69] = Opcode("ADC", "IMM", 0x69, ADC, 2, 2);

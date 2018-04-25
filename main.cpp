@@ -65,15 +65,28 @@ void HandlePPU() {
 	}
 	else if (address == 0x2006) {
 		if (lowVramPointer) _vramPointer[1] = ROM[0x2006];
-		else _vramPointer[0] = ROM[0x2006];
+		else {
+			_vramPointer[0] = ROM[0x2006];
+			vramPointer = tempVramPointer;
+		}
+
 		lowVramPointer = !lowVramPointer;
 	}
 	else if (address == 0x2007) {
+		cout << "addressing 2007" << endl;
+
 		if (vramPointer >= 0x4000) vramPointer = vramPointer % 0x4000;
-		if(writeOperation) VROM[vramPointer] = ROM[0x2007];
-		ROM[0x2007] = VROM[vramPointer];
-		if (GetVRAMIncrement()) vramPointer += 32;
-		else vramPointer++;
+		if (vramPointer < 0x3f00) {
+			if (writeOperation) VROM[vramPointer] = ROM[0x2007];
+			ROM[0x2007] = VROM[vramPointer];
+			if (GetVRAMIncrement()) vramPointer += 32;
+			else vramPointer++;
+		}
+		else {
+			VROM[vramPointer] = ROM[0x2007];
+			if (GetVRAMIncrement()) vramPointer += 32;
+			else vramPointer++;
+		}
 	}
 	else if (address == 0x4014) {
 		char v = ROM[0x4014];
@@ -127,8 +140,10 @@ void RenderBG() {
 	if (pg1 & 1) pg2 = 0;
 	else pg2 = 1;
 
+	//pg1 = pg2 = 0;
+
 	char fullLine[32 * 8 * 4 * 2];
-	Color clearColor = palette.GetColor(SPRPalette[0]);
+	Color clearColor = palette.GetColor(BGPalette[0]);
 	for (int i = 0; i < 32 * 16; i++) {
 		fullLine[i * 4] = clearColor.r;
 		fullLine[i * 4 + 1] = clearColor.g;
@@ -264,6 +279,10 @@ void CheckPause() {
 	if (glfwGetKey(mainWindow, GLFW_KEY_SPACE)) {
 		cout << "pause" << endl;
 		ENABLE_BREAK = true;
+
+		for (int i = 0; i < 16; i++) {
+			cout <<hex<<(int)BGPalette[i] << endl;
+		}
 
 		while (!glfwGetKey(mainWindow, GLFW_KEY_Q)) {
 			if (glfwGetKey(mainWindow, GLFW_KEY_S)) {

@@ -9,7 +9,8 @@ unsigned char* _op = (unsigned char*)&op;
 
 // vram address and toggle to swap writing byte in it
 unsigned short vramPointer;
-char* _vramPointer = (char*)&vramPointer;
+unsigned short tempVramPointer;
+char* _vramPointer = (char*)&tempVramPointer;
 bool lowVramPointer = true;
 
 // decode addressing mode to those values
@@ -54,64 +55,64 @@ const unsigned char F_TRANS = 0b1000000; // transfer to sign bit flag
 const unsigned char F_SIGN = 0b10000000; // sign flag
 
 // get flags
-inline const bool GetFlag(char flagName) {
+bool GetFlag(char flagName) {
 	return F & flagName;
 }
-inline bool GetCarry() {
+bool GetCarry() {
 	return F & F_CARRY;
 }
-inline bool GetZero() {
+bool GetZero() {
 	return F & F_ZERO;
 }
-inline bool GetInterrupt() {
+bool GetInterrupt() {
 	return F & F_INT;
 }
-inline bool GetDecimal() {
+bool GetDecimal() {
 	return F & F_DECIMAL;
 }
-inline bool GetBreak() {
+bool GetBreak() {
 	return F & F_BREAK;
 }
-inline bool Get1() {
+bool Get1() {
 	return F & F_1;
 }
-inline bool GetOverflow() {
+bool GetOverflow() {
 	return F & F_TRANS;
 }
-inline bool GetSign() {
+bool GetSign() {
 	return F & F_SIGN;
 }
 
 //set flags if get true, else unset
-inline void SetCarry(char b) {
+void SetCarry(bool b) {
 	if (b) SET_CARRY();
 	else UNSET_CARRY();
 }
-inline void SetZero(char b) {
+void SetZero(bool b) {
 	if (b) UNSET_ZERO();
 	else SET_ZERO();
 }
-inline void SetSign(char b) {
+void SetSign(char b) {
 	if (b & F_SIGN) SET_SIGN();
 	else UNSET_SIGN();
 }
-inline void SetOverflow(char b) {
+void SetOverflow(bool b) {
 	if (b) SET_TRANS();
 	else UNSET_TRANS();
 }
-inline void SetInterrupt(char b) {
+void SetInterrupt(bool b) {
 	if (b) SET_INT();
 	else UNSET_INT();
 }
-inline void SetBreak(char b) {
+void SetBreak(bool b) {
 	if (b) SET_BREAK();
 	else UNSET_BREAK();
 }
-inline void SetDecimal(char b) {
+void SetDecimal(bool b) {
 	if (b)SET_DECIMAL();
 	else UNSET_DECIMAL();
 }
-inline void Set1(char b) {
+void Set1(bool b) {
 	if (b)SET_1();
 	else UNSET_1();
 }

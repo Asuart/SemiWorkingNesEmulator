@@ -32,7 +32,7 @@ struct ROMinfo {
 };
 ROMinfo currentROM;
 
-void LoadROM(char* path = "F:/bomberman.nes") {
+void LoadROM(char* path = "F:/nestest.nes") {
 	std::ifstream reader;
 	reader.open(path, std::ifstream::binary);
 	if (!reader) {
