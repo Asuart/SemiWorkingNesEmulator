@@ -48,7 +48,7 @@ unsigned char GetKeyState(char key) {
 
 void HandlePPU() {
 	if (address == 0x2002) {
-		ROM[0x2002] &= ~0x80;
+		//ROM[0x2002] &= ~0x80; // wiki saysit must be cleard? but nestest fails then
 		//scrollX = scrollY = vramPointer = 0;
 	}
 	else if (address == 0x4016) {
@@ -73,8 +73,6 @@ void HandlePPU() {
 		lowVramPointer = !lowVramPointer;
 	}
 	else if (address == 0x2007) {
-		cout << "addressing 2007" << endl;
-
 		if (vramPointer >= 0x4000) vramPointer = vramPointer % 0x4000;
 		if (vramPointer < 0x3f00) {
 			if (writeOperation) VROM[vramPointer] = ROM[0x2007];
@@ -132,15 +130,17 @@ void Run(int numCycles) {
 void RenderBG() {
 	drawSprite = false;
 	CurPalette = BGPalette;
-	int line = scanline % 8;
-	int numY = (scanline >> 3) + 1;
+
+	unsigned short curScanline = scanline + curScrollY;
+	int line = curScanline % 8;
+	int numY = ((curScanline % 240) >> 3) + 1;
 
 	char pg1 = GetCurPage();
+	if (scanline + curScrollY > 0xff) 
+		(pg1 & 0b10) ? pg1 &= ~0b10 : pg1 |= 0b10;
 	char pg2;
 	if (pg1 & 1) pg2 = 0;
 	else pg2 = 1;
-
-	//pg1 = pg2 = 0;
 
 	char fullLine[32 * 8 * 4 * 2];
 	Color clearColor = palette.GetColor(BGPalette[0]);
@@ -180,19 +180,46 @@ void RenderSPR() {
 	drawSprite = true;
 	CurPalette = SPRPalette;
 	unsigned char line = 0;
-	for (int i = OAMAddress; i < 256; i += 4) {
-		curColorSet = (OAM[i + 2] & 0b11);
-		TopSPR = (OAM[i + 2] & (1 << 5));
-		// tile on line
-		if (OAM[i] >= scanline && OAM[i] < scanline + 8) {
-			// flip vertical
-			if (OAM[i + 2] & 0x80) line = (OAM[i] - scanline);
-			else line = 7 - (OAM[i] - scanline);
-			// mask pixels over screen
-			if (OAM[i] + line < 240 && scanline * 1024 + OAM[i + 3] * 4 <= 1024 * 240 - 32) {
-				// flip horizontal
-				if (OAM[i + 2] & (1 << 6)) spriteList[GetSPRPattern()].DrawLineMirrored(OAM[i + 1], line, screenSpriteData + scanline * 1024 + OAM[i + 3] * 4);
-				else spriteList[GetSPRPattern()].DrawLine(OAM[i + 1], line, screenSpriteData + scanline * 1024 + OAM[i + 3] * 4);
+	if (GetSPRSize()) {
+		for (int i = OAMAddress; i < 256; i += 4) {
+			unsigned char patternTable = OAM[i + 1] & 1;
+			unsigned char sprCode = ((OAM[i + 1] >> 1) & ~0x80) * 2;
+			unsigned char sprHeight = 16;
+			curColorSet = (OAM[i + 2] & 0b11);
+			TopSPR = (OAM[i + 2] & (1 << 5));
+			//tile on line
+			if (OAM[i] >= scanline - 8 && OAM[i] < scanline + 8) {
+				// flip vertical
+				if (OAM[i + 2] & 0x80) line = (OAM[i] - scanline);
+				else line = 7 - (OAM[i] - scanline);
+				if (line > 7) {
+					sprCode++;
+					line %= 8;
+				}
+				// mask pixels over screen
+				if (OAM[i] + line < 240 && scanline * 1024 + OAM[i + 3] * 4 <= 1024 * 240 - 32) {
+					// flip horizontal
+					if (OAM[i + 2] & (1 << 6)) spriteList[patternTable].DrawLineMirrored(sprCode, line, screenSpriteData + scanline * 1024 + OAM[i + 3] * 4);
+					else spriteList[patternTable].DrawLine(sprCode, line, screenSpriteData + scanline * 1024 + OAM[i + 3] * 4);
+				}
+			}
+		}
+	}
+	else {
+		for (int i = OAMAddress; i < 256; i += 4) {
+			curColorSet = (OAM[i + 2] & 0b11);
+			TopSPR = (OAM[i + 2] & (1 << 5));
+			// tile on line
+			if (OAM[i] >= scanline && OAM[i] < scanline + 8) {
+				// flip vertical
+				if (OAM[i + 2] & 0x80) line = (OAM[i] - scanline);
+				else line = 7 - (OAM[i] - scanline);
+				// mask pixels over screen
+				if (OAM[i] + line < 240 && scanline * 1024 + OAM[i + 3] * 4 <= 1024 * 240 - 32) {
+					// flip horizontal
+					if (OAM[i + 2] & (1 << 6)) spriteList[GetSPRPattern()].DrawLineMirrored(OAM[i + 1], line, screenSpriteData + scanline * 1024 + OAM[i + 3] * 4);
+					else spriteList[GetSPRPattern()].DrawLine(OAM[i + 1], line, screenSpriteData + scanline * 1024 + OAM[i + 3] * 4);
+				}
 			}
 		}
 	}

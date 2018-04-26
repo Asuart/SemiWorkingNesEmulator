@@ -32,7 +32,7 @@ struct ROMinfo {
 };
 ROMinfo currentROM;
 
-void LoadROM(char* path = "F:/nestest.nes") {
+void LoadROM(char* path = "F:/mt.nes") {
 	std::ifstream reader;
 	reader.open(path, std::ifstream::binary);
 	if (!reader) {
@@ -46,8 +46,8 @@ void LoadROM(char* path = "F:/nestest.nes") {
 	char* ROMdata = new char[ROMsize];
 	reader.read(ROMdata, ROMsize);
 
-	char mapper = 0;
-	mapper = ROMdata[6] >> 4;
+	unsigned char mapper = 0;
+	mapper = (ROMdata[6] >> 4) & 0xf;
 	mapper |= ROMdata[7] & 0xF0;
 
 	char CHRROMcount = ROMdata[5];
@@ -67,7 +67,7 @@ void LoadROM(char* path = "F:/nestest.nes") {
 	std::cout << "PRG ROMs: " << (int)ROMdata[4] << std::endl;
 	std::cout << "CHR ROMs: " << (int)ROMdata[5] << std::endl;
 	std::cout << "PRG RAMs: " << (int)ROMdata[8] << std::endl;
-	std::cout << "Mapper: " << (int)mapper << std::endl;
+	std::cout << "Mapper: " << (int)(mapper) << std::endl;
 	std::cout << "Scrolling: " << ((ROMdata[6] & 4) ? "4 page" : (((int)ROMdata[6] & 1) ? "vertical" : "horizontal")) << std::endl;
 	std::cout << "Cart has PRGRAM: " << ((int)ROMdata[6] & 2) << std::endl;
 	std::cout << "Cart has Trainer: " << ((int)ROMdata[6] & 4) << std::endl;

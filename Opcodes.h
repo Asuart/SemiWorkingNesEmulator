@@ -520,7 +520,7 @@ void TYA() {
 }
 
 
-#define UNOFFICIAL
+//#define UNOFFICIAL
 #ifdef UNOFFICIAL
 // Unofficial opcodes
 void DOP() {
