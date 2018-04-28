@@ -48,57 +48,49 @@ unsigned char GetKeyState(char key) {
 
 void HandlePPU() {
 	if (address == 0x2002) {
-		//ROM[0x2002] &= ~0x80; // wiki saysit must be cleard? but nestest fails then
+		*mmc->GetROMCell(0x2002) &= ~0x80; // wiki saysit must be cleard? but nestest fails then
 		//scrollX = scrollY = vramPointer = 0;
 	}
 	else if (address == 0x4016) {
 		static char readKeyNum = 0;
-		if (writeOperation && !(ROM[0x4016] & 1)) {
+		if (writeOperation && !(mmc->ReadROM(0x4016) & 1)) {
 			readKeyNum = 0;
-			ROM[0x4016] = GetKeyState(readKeyNum);
+			*mmc->GetROMCell(0x4016) = GetKeyState(readKeyNum);
 			readKeyNum++;
 		}
 		else if (!writeOperation) {
-			ROM[0x4016] = GetKeyState(readKeyNum);
+			*mmc->GetROMCell(0x4016) = GetKeyState(readKeyNum);
 			readKeyNum++;
 		}
 	}
 	else if (address == 0x2006) {
-		if (lowVramPointer) _vramPointer[1] = ROM[0x2006];
+		if (lowVramPointer) _vramPointer[1] = mmc->ReadROM(0x2006);
 		else {
-			_vramPointer[0] = ROM[0x2006];
+			_vramPointer[0] = mmc->ReadROM(0x2006);
 			vramPointer = tempVramPointer;
 		}
-
 		lowVramPointer = !lowVramPointer;
 	}
 	else if (address == 0x2007) {
 		if (vramPointer >= 0x4000) vramPointer = vramPointer % 0x4000;
-		if (vramPointer < 0x3f00) {
-			if (writeOperation) VROM[vramPointer] = ROM[0x2007];
-			ROM[0x2007] = VROM[vramPointer];
-			if (GetVRAMIncrement()) vramPointer += 32;
-			else vramPointer++;
-		}
-		else {
-			VROM[vramPointer] = ROM[0x2007];
-			if (GetVRAMIncrement()) vramPointer += 32;
-			else vramPointer++;
-		}
+		if (writeOperation) mmc->CopyROMToVRAM(0x2007, vramPointer);
+		mmc->WriteToROM(0x2007, mmc->ReadVRAM(vramPointer));
+		if (GetVRAMIncrement()) vramPointer += 32;
+		else vramPointer++;
 	}
 	else if (address == 0x4014) {
-		char v = ROM[0x4014];
+		char v = mmc->ReadROM(0x4014);
 		short a = ((v << 8) & 0xff00);
 		for (int i = 0; i < 0x100; i++, a++) {
-			OAM[i] = ROM[a];
+			OAM[i] = mmc->ReadROM(a);
 		}
 	}
 	else if (address == 0x2003) {
-		OAMAddress = ROM[0x2003];
+		OAMAddress = mmc->ReadROM(0x2003);
 	}
 	else if (address == 0x2004) {
 		if (writeOperation) {
-			OAM[OAMAddress] = ROM[0x2004];
+			OAM[OAMAddress] = mmc->ReadROM(0x2004);
 		}
 		if (!writeOperation && GetVBlank()) {
 
@@ -108,8 +100,8 @@ void HandlePPU() {
 		}
 	}
 	else if (address == 0x2005) {
-		if (toggleScroll) scrollX = ROM[0x2005];
-		else scrollY = ROM[0x2005];
+		if (toggleScroll) scrollX = mmc->ReadROM(0x2005);
+		else scrollY = mmc->ReadROM(0x2005);
 		toggleScroll = !toggleScroll;
 	}
 	writeOperation = false;
@@ -325,8 +317,10 @@ int main() {
 	InitGL();
 	LoadROM();
 
-	spriteList[0] = SpriteList(VROM);
-	spriteList[1] = SpriteList(VROM + 0x1000);
+	for (int i = 0; i < 4; i++)pages[i].MapPage();
+
+	spriteList[0] = SpriteList(mmc->GetVRAMCell(0x00));
+	spriteList[1] = SpriteList(mmc->GetVRAMCell(0x1000));
 	palette.LoadColorTable();
 	LoadOpcodesTable();
 
@@ -352,27 +346,22 @@ int main() {
 	F = 0x34;
 	AC = X = Y = 0;
 	SP = 0xfd;
-	ROM[0x4017] = 0;
-	ROM[0x4015] = 0;
-	for (int i = 0; i < 0x10; i++) ROM[0x4000 + i] = 0;
 	cycle = 0;
 	vramPointer = 0x2000;
 	scanline = 261;
-	for (int i = 0; i < 0x800; i++) ROM[i] = 0x0;
-	for (int i = 0; i < 256; i++) OAM[i] = 0x0;
 
 	// get nmi address
 	char* p = (char*)&NMI_ADDR;
-	p[0] = ROM[0xfffa];
-	p[1] = ROM[0xfffb];
+	p[0] = mmc->ReadROM(0xfffa);
+	p[1] = mmc->ReadROM(0xfffb);
 	// get reset address
 	p = (char*)&RESET_ADDR;
-	p[0] = ROM[0xfffc];
-	p[1] = ROM[0xfffd];
+	p[0] = mmc->ReadROM(0xfffc);
+	p[1] = mmc->ReadROM(0xfffd);
 	// get break address
 	p = (char*)&BREAK_ADDR;
-	p[0] = ROM[0xfffe];
-	p[1] = ROM[0xffff];
+	p[0] = mmc->ReadROM(0xfffe);
+	p[1] = mmc->ReadROM(0xffff);
 	PC = RESET_ADDR;
 
 	glBindVertexArray(screenVAO);

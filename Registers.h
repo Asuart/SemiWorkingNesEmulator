@@ -1,31 +1,33 @@
 #pragma once
-unsigned char AC, F, X, Y;
-unsigned char SP;
-unsigned short PC;
-unsigned char opcode;
+u8 AC, F, X, Y;
+u8 SP;
+u16 PC;
+u8 opcode;
 
-unsigned short op; // operand after instruction
-unsigned char* _op = (unsigned char*)&op;
+u16 lPC;// todo: delete (for debug purpose)
+
+u16 op; // operand after instruction
+u8* _op = (u8*)&op;
 
 // vram address and toggle to swap writing byte in it
-unsigned short vramPointer;
-unsigned short tempVramPointer;
-char* _vramPointer = (char*)&tempVramPointer;
+u16 vramPointer;
+u16 tempVramPointer;
+u8* _vramPointer = (u8*)&tempVramPointer;
 bool lowVramPointer = true;
 
 // decode addressing mode to those values
-unsigned short address;
-unsigned char value;
-unsigned char* cell; // to write value back
+u16 address;
+u8 value;
+u8* cell; // to write value back
 
 // to read input and some other sings
 bool writeOperation = false;
 
-unsigned char scrollX, scrollY;
-unsigned char OAMAddress;
+u8 scrollX, scrollY;
+u8 OAMAddress;
 
-unsigned int cycle = 0;
-int CyclesDown = 0;
+u32 cycle = 0;
+s32 CyclesDown = 0;
 
 #define SET_CARRY() F |= F_CARRY
 #define UNSET_CARRY() F &= ~F_CARRY
@@ -45,17 +47,17 @@ int CyclesDown = 0;
 #define UNSET_SIGN() F &= ~F_SIGN
 
 // register flags
-const unsigned char F_CARRY = 0b1; // carry flag
-const unsigned char F_ZERO = 0b10; // zero flag
-const unsigned char F_INT = 0b100; // interrupt flag
-const unsigned char F_DECIMAL = 0b1000; // decimal flag not used in dendy
-const unsigned char F_BREAK = 0b10000; // break flag
-const unsigned char F_1 = 0b100000; // 1 flag
-const unsigned char F_TRANS = 0b1000000; // transfer to sign bit flag
-const unsigned char F_SIGN = 0b10000000; // sign flag
+const u8 F_CARRY = 0b1; // carry flag
+const u8 F_ZERO = 0b10; // zero flag
+const u8 F_INT = 0b100; // interrupt flag
+const u8 F_DECIMAL = 0b1000; // decimal flag not used in dendy
+const u8 F_BREAK = 0b10000; // break flag
+const u8 F_1 = 0b100000; // 1 flag
+const u8 F_TRANS = 0b1000000; // transfer to sign bit flag
+const u8 F_SIGN = 0b10000000; // sign flag
 
 // get flags
-bool GetFlag(char flagName) {
+bool GetFlag(u8 flagName) {
 	return F & flagName;
 }
 bool GetCarry() {
@@ -92,7 +94,8 @@ void SetZero(bool b) {
 	if (b) UNSET_ZERO();
 	else SET_ZERO();
 }
-void SetSign(char b) {
+// get value (not flags state)
+void SetSign(u8 b) { 
 	if (b & F_SIGN) SET_SIGN();
 	else UNSET_SIGN();
 }
@@ -115,4 +118,10 @@ void SetDecimal(bool b) {
 void Set1(bool b) {
 	if (b)SET_1();
 	else UNSET_1();
+}
+
+// set sign and zero flags. Get value.
+void SetNZ(u8 value) {
+	SetSign(value);
+	SetZero(value);
 }

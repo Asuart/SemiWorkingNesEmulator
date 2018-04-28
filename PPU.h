@@ -39,71 +39,69 @@ GLuint screenPlaneObject;
 GLuint screenSprite;
 GLuint shader;
 
-int SCREEN_SCALE = 3;
-const int SCREEN_WIDTH = 256;
-const int SCREEN_HEIGHT = 240;
-const int NTSC_VIEW_HEIGHT = 224;
-const int SPRITE_SIZE = 8;
-const int SPRITE_LIST_SIZE = 16;
+const u16 SCREEN_SCALE = 3;
+const u16 SCREEN_WIDTH = 256;
+const u16 SCREEN_HEIGHT = 240;
+const u16 NTSC_VIEW_HEIGHT = 224;
+const u16 SPRITE_SIZE = 8;
+const u16 SPRITE_LIST_SIZE = 16;
 
-const int PAGE_CHAR_SIZE = 960;
-const int PAGE_PARAMS_SIZE = 64;
-int countPages = 0;
-
-
+const u16 PAGE_CHAR_SIZE = 960;
+const u16 PAGE_PARAMS_SIZE = 64;
+u16 countPages = 0;
 
 GLFWwindow* mainWindow;
 const int SCREEN_SPRITE_SIZE = SCREEN_WIDTH * SCREEN_HEIGHT * 4;
 
-unsigned char GetCurPage() {
-	return ROM[0x2000] & 0b11;
+u8 GetCurPage() {
+	return mmc->ReadROM(0x2000) & 0b11;
 }
 bool GetVRAMIncrement() {
-	return ROM[0x2000] & (1 << 2);
+	return mmc->ReadROM(0x2000) & (1 << 2);
 }
 bool GetSPRPattern() {
-	return ROM[0x2000] & (1 << 3);
+	return mmc->ReadROM(0x2000) & (1 << 3);
 }
 bool GetBGPattern() {
-	return ROM[0x2000] & (1 << 4);
+	return mmc->ReadROM(0x2000) & (1 << 4);
 }
 bool GetSPRSize() {
-	return ROM[0x2000] & (1 << 5);
+	return mmc->ReadROM(0x2000) & (1 << 5);
 }
 bool GetNMIEnabled() {
-	return ROM[0x2000] & (1 << 7);
+	return mmc->ReadROM(0x2000) & (1 << 7);
 }
 bool GetLeftLineBG() {
-	return ROM[0x2001] & (1 << 1);
+	return mmc->ReadROM(0x2001) & (1 << 1);
 }
 bool GetLeftLineSPR() {
-	return ROM[0x2001] & (1 << 2);
+	return mmc->ReadROM(0x2001) & (1 << 2);
 }
 bool GetShowBG() {
-	return ROM[0x2001] & (1 << 3);
+	return mmc->ReadROM(0x2001) & (1 << 3);
 }
 bool GetShowSPR() {
-	return ROM[0x2001] & (1 << 4);
+	return mmc->ReadROM(0x2001) & (1 << 4);
 }
 bool GetVBlank() {
-	return ROM[0x2002] &= (1 << 7);
+	return mmc->ReadROM(0x2002) & (1 << 7);
 }
 
 void SetSpriteOverflow(bool flag) {
-	if (flag) ROM[0x2002] |= (1 << 5);
-	else ROM[0x2002] &= ~(1 << 5);
+	if (flag) *mmc->GetROMCell(0x2002) |= (1 << 5);
+	else *mmc->GetROMCell(0x2002) &= ~(1 << 5);
 }
 void SetSpriteHit(bool flag) {
-	if (flag) ROM[0x2002] |= (1 << 6);
-	else ROM[0x2002] &= ~(1 << 6);
+	if (flag) *mmc->GetROMCell(0x2002) |= (1 << 6);
+	else *mmc->GetROMCell(0x2002) &= ~(1 << 6);
 }
 void SetVBlank(bool flag) {
-	if (flag) ROM[0x2002] |= (1 << 7);
-	else ROM[0x2002] &= ~(1 << 7);
+	if (flag) *mmc->GetROMCell(0x2002) |= (1 << 7);
+	else *mmc->GetROMCell(0x2002) &= ~(1 << 7);
 }
 void SetWriteLock(bool flag) {
-	if (flag) ROM[0x2002] |= (1 << 4);
-	else ROM[0x2002] &= ~(1 << 4);
+	if (flag) *mmc->GetROMCell(0x2002) |= (1 << 4);
+	else *mmc->GetROMCell(0x2002) &= ~(1 << 4);
 }
 
 bool InitWindow() {
@@ -124,7 +122,7 @@ bool InitGL() {
 	glewExperimental = GL_TRUE;
 	if (glewInit()) {
 		cout << "Glew init failed!" << endl;
-		return false;
+		return true;
 	}
 
 	glEnable(GL_BLEND);
@@ -156,7 +154,7 @@ bool InitGL() {
 
 	glUseProgram(shader);
 
-	return true;
+	return false;
 }
 
 struct Color {
@@ -243,9 +241,9 @@ struct Palette {
 Palette palette;
 
 struct Sprite {
-	unsigned char pixels[SPRITE_SIZE][SPRITE_SIZE];
+	u8 pixels[SPRITE_SIZE][SPRITE_SIZE];
 
-	Sprite(char* chrrom) {
+	Sprite(u8* chrrom) {
 		for (int i = 0; i < SPRITE_SIZE; i++) {
 			char v1 = chrrom[i];
 			char v2 = chrrom[i + 8];
@@ -320,8 +318,8 @@ struct Sprite {
 struct SpriteList {
 	Sprite sprites[SPRITE_LIST_SIZE][SPRITE_LIST_SIZE];
 	SpriteList() {}
-	SpriteList(char* chrrom) {
-		int n = 0;
+	SpriteList(u8* chrrom) {
+		u32 n = 0;
 		for (int i = 0; i < SPRITE_LIST_SIZE; i++) {
 			for (int j = 0; j < SPRITE_LIST_SIZE; j++, n++) {
 				sprites[i][j] = Sprite(chrrom + (n * 16));
@@ -339,24 +337,16 @@ struct SpriteList {
 SpriteList spriteList[2];
 
 struct CharPage {
-	char* data;
-	char* params;
-	char number;
+	u8* data;
+	u8* params;
+	u8 number;
 	CharPage() {
-		number = countPages;
-		data = VROM + 0x2000 + 0x400 * number;
-		params = VROM + 0x23c0 + 0x400 * number;
-		countPages++;
 	}
-	void DrawToSprite(char* sprite) {
-		for (int i = 0; i < 30; i++) {
-			for (int j = 0; j < 32; j++) {
-				char code = data[i * 32 + j];
-				for (int k = 0; k < 8; k++) {
-					spriteList[1].DrawLine(code, k, sprite + (i * 8 + k) * 256 * 4 + j * 32);
-				}
-			}
-		}
+	void MapPage() {
+		number = countPages;
+		data = mmc->GetVRAMCell(0x2000 + 0x400 * number);
+		params = mmc->GetVRAMCell(0x23c0 + 0x400 * number);
+		countPages++;
 	}
 };
 CharPage pages[4];
