@@ -472,14 +472,17 @@ void SEI() {
 	SetInterrupt(1);
 }
 void STA() {
+	value = AC;
 	*cell = AC;
 	writeOperation = true;
 }
 void STX() {
+	value = X;
 	*cell = X;
 	writeOperation = true;
 }
 void STY() {
+	value = Y;
 	*cell = Y;
 	writeOperation = true;
 }

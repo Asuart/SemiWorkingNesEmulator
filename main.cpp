@@ -113,6 +113,7 @@ void Run(int numCycles) {
 	while (CyclesDown > 0) {
 		cycle++;
 		Step();
+		mmc->UpdateState();
 		HandlePPU();
 	}
 }
