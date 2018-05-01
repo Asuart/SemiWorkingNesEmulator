@@ -1,13 +1,17 @@
 #pragma once
-u8 AC, F, X, Y;
-u8 SP;
-u16 PC;
-u8 opcode;
 
-u16 lPC;// todo: delete (for debug purpose)
+using namespace std;
+using namespace glm;
 
+u8 AC, F, X, Y; // CPU register.
+u8 SP; // Stack pointer
+u16 PC; // Programm counter
+
+u8 opcode; // Currently executing opcode
 u16 op; // operand after instruction
 u8* _op = (u8*)&op;
+
+u16 lPC;// todo: delete (for debug purpose)
 
 // vram address and toggle to swap writing byte in it
 u16 vramPointer;
@@ -20,14 +24,23 @@ u16 address;
 u8 value;
 u8* cell; // to write value back
 
-// to read input and some other sings
+// to read input and some other things
 bool writeOperation = false;
 
+bool toggleScroll = true;
+u8 curScrollX = 0;
+u8 curScrollY = 0;
 u8 scrollX, scrollY;
+
 u8 OAMAddress;
 
 u32 cycle = 0;
 s32 CyclesDown = 0;
+
+u16 scanline = 261;
+
+bool BotSPR = false; // Hide sprite under BG
+bool drawSprite = false; // Now drawing sprite
 
 #define SET_CARRY() F |= F_CARRY
 #define UNSET_CARRY() F &= ~F_CARRY

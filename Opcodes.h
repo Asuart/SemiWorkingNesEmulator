@@ -250,19 +250,18 @@ char PULL8() {
 }
 
 void Disasm() {
-	cout << hex << lPC << " : " << opcodes[opcode].name << "_" << opcodes[opcode].addressing << "(" << (int)opcode << ")" << " A:" << (int)(AC & 0xff) << " X:" << (int)(X & 0xff) << " Y:" << (int)(Y & 0xff) << " S:" << (int)(SP) << " P:" << hex << bitset<8>(F & 0xff) << endl;
-	cout << address << ":" << (int)value << endl;
+	cout << hex << PC - opcodes[opcode].length << " : " << opcodes[opcode].name << "_" << opcodes[opcode].addressing << "(" << (int)opcode << ")" << " A:" << (int)(AC & 0xff) << " X:" << (int)(X & 0xff) << " Y:" << (int)(Y & 0xff) << " S:" << (int)(SP) << " P:" << hex << bitset<8>(F & 0xff) << endl;
+	cout << "Address and value: " << address << ":" << (int)value << endl;
 }
 
 void Step() {
-	lPC = PC; // todo: delete
 	GetOpcode();
 	opcodes[opcode].exec();
 	CyclesDown -= opcodes[opcode].cycles;
 }
 
 void NONE() {
-	//cout << "Used unregistered opcode: " <<hex<< opcode<<" at "<< PC <<" after " << lPC<<" cycle: "<<cycle << endl;
+	cout << "Used unregistered opcode: " << hex << opcode << endl;
 }
 
 void ADC() {

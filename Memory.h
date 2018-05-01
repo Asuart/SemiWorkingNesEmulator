@@ -10,7 +10,16 @@ typedef unsigned char u8;
 typedef unsigned short u16;
 typedef unsigned int u32;
 
-using namespace std;
+static u16 countPages = 0;
+
+enum MIRRORING_MODE {
+	ONE_PAGE0 = 0,
+	ONE_PAGE1,
+	VERTICAL,
+	HORIZONTAL,
+	FOUR_PAGE
+};
+
 
 struct ROMinfo {
 	u32 size;
@@ -68,6 +77,61 @@ public:
 };
 Mapper* mmc;
 
+struct CharPage {
+	u8* data;
+	u8* params;
+	u8 page;
+	CharPage() {
+	}
+	void SetPage(u8 pageNum) {
+		page = pageNum;
+		data = mmc->GetVRAMCell(0x2000 + 0x400 * page);
+		params = mmc->GetVRAMCell(0x23c0 + 0x400 * page);
+	}
+	u8 GetPage() {
+		return page;
+	}
+};
+CharPage pages[4];
+
+void SetMirroringPage0() {
+	for (int i = 0; i < 4; i++)pages[i].SetPage(0);
+}
+void SetMirroringPage1() {
+	for (int i = 0; i < 4; i++)pages[i].SetPage(1);
+}
+void SetMirroringHorizontal() {
+	pages[0].SetPage(0);
+	pages[1].SetPage(0);
+	pages[2].SetPage(2);
+	pages[3].SetPage(2);
+}
+void SetMirroringVertical() {
+	pages[0].SetPage(0);
+	pages[1].SetPage(1);
+	pages[2].SetPage(0);
+	pages[3].SetPage(1);
+}
+void SetMirroringFourPage() {
+	for (int i = 0; i < 4; i++)pages[i].SetPage(i);
+}
+
+void SetMirroring(MIRRORING_MODE mode) {
+	switch (mode) {
+	case ONE_PAGE0:
+		SetMirroringPage0(); break;
+	case ONE_PAGE1:
+		SetMirroringPage1(); break;
+	case VERTICAL:
+		SetMirroringVertical(); break;
+	case HORIZONTAL:
+		SetMirroringHorizontal(); break;
+	case FOUR_PAGE:
+		SetMirroringFourPage(); break;
+	}
+}
+
+
 class Mapper0 : public Mapper {
 protected:
 	u8* PRG0;
@@ -95,32 +159,30 @@ public:
 	}
 };
 class MMC1 : public Mapper {
-	// currently not working
-	enum CHUNK_MODE { KB4 = 0, KB8, KB16, KB32 };
+	// currently half working
 
 	static const u16 PRGBankSize = 16384;
+	static const u16 CHRBankSize = 4096;
 
 	void ResetSR() {
 		SR = (1 << 4);
 	}
 	void SwitchCHRROM(u8 bank) {
-		static const u16 bankSize = 8192;
-		u8* data = &CHRROMdata[bank*bankSize];
-		for (int i = 0; i < bankSize; i++) CHR0[i] = data[i];
+		bank &= 0b11110;
+		u8* data = &CHRROMdata[bank*CHRBankSize];
+		for (int i = 0; i < CHRBankSize * 2; i++) CHR0[i] = data[i];
 	}
 	void SwitchCHR0(u8 bank) {
-		static const u16 bankSize = 4096;
-		u8* data = &CHRROMdata[bank*bankSize];
-		for (int i = 0; i < bankSize; i++) CHR0[i] = data[i];
+		u8* data = &CHRROMdata[bank*CHRBankSize];
+		for (int i = 0; i < CHRBankSize; i++) CHR0[i] = data[i];
 	}
 	void SwitchCHR1(u8 bank) {
-		static const u16 bankSize = 4096;
-		u8* data = &CHRROMdata[bank*bankSize];
-		for (int i = 0; i < bankSize; i++) CHR1[i] = data[i];
+		u8* data = &CHRROMdata[bank*CHRBankSize];
+		for (int i = 0; i < CHRBankSize; i++) CHR1[i] = data[i];
 	}
 	void SwitchPRGROM(u8 bank) {
 		bank &= 0b1110; // ignore upper and lower bits
-		u8* data = &PRGROMdata[bank*PRGBankSize];
+		u8* data = &PRGROMdata[bank*CHRBankSize];
 		for (int i = 0; i < PRGBankSize * 2; i++) PRG0[i] = data[i];
 	}
 	void SwitchPRG0(u8 bank) {
@@ -133,6 +195,7 @@ class MMC1 : public Mapper {
 		u8* data = &PRGROMdata[bank*PRGBankSize];
 		for (int i = 0; i < PRGBankSize; i++) PRG1[i] = data[i];
 	}
+
 protected:
 	static const u32 PRGROMcapacity = 524288; // Maximum PRG data size in ROM.
 	static const u32 CHRROMcapacity = 131072; // Maximum CHR data size in ROM.
@@ -162,7 +225,7 @@ public:
 		}
 		for (int i = 0; i < 0x100; i++) OAM[i] = 0;
 		ResetSR();
-		CTRL = 0;
+		CTRL = 0xc;
 
 		PRGRAM = &ROM[0x6000];
 		PRG0 = &ROM[0x8000];
@@ -173,16 +236,19 @@ public:
 	void LoadFromROM(u8* data) {
 		// cut header
 		data = &data[0x10];
-		for (int i = 0; i < 16384 * currentROM.PRGROMcount; i++) PRGROMdata[i] = data[i];
-		for (int i = 16384 * currentROM.PRGROMcount, j = 0; j < 8192 * currentROM.CHRROMcount; i++, j++) CHRROMdata[j] = data[i];
+		for (int i = 0; i < PRGBankSize * currentROM.PRGROMcount; i++) PRGROMdata[i] = data[i];
+		for (int i = PRGBankSize * currentROM.PRGROMcount, j = 0; j < CHRBankSize * currentROM.CHRROMcount; i++, j++) CHRROMdata[j] = data[i];
 		// load start data
-		for (int i = 0; i < 16384; i++)PRG0[i] = PRGROMdata[i];
-		for (int i = 0; i < 16384; i++)PRG1[i] = PRGROMdata[7*16384 + i];
-		for (int i = 0; i < 8096; i++)CHR0[i] = CHRROMdata[i];
+		for (int i = 0; i < PRGBankSize; i++)PRG0[i] = PRGROMdata[i];
+		for (int i = 0; i < PRGBankSize; i++)PRG1[i] = PRGROMdata[(currentROM.PRGROMcount - 1)*PRGBankSize + i];
+		for (int i = 0; i < CHRBankSize * 2; i++)CHR0[i] = CHRROMdata[i];
 	}
 	void UpdateState() {
 		if (writeOperation && address > 0x7fff) {
-			if (value & 0x80) ResetSR();
+			if (value & 0x80) {
+				ResetSR();
+				CTRL = 0xc;
+			}
 			else {
 				if (!(SR & 1)) SR = ((SR >> 1) | ((value & 1) << 4));
 				else {
@@ -190,8 +256,31 @@ public:
 					// Depend on 5th write address choose operation
 					if (address < 0xa000) { // Copy to Control register
 						CTRL = SR;
+						switch (SR & 0b11) {
+						case 0:
+							SetMirroringPage0(); break;
+						case 1:
+							SetMirroringPage1();  break;
+						case 2:
+							SetMirroringVertical(); break;
+						case 3:
+							SetMirroringHorizontal(); break;
+						}
 					}
-					else if (address >= 0xe000) { // Switch CHR0
+					else if (address < 0xc000) {
+						if (!(CTRL & 0b10000)) {
+							SwitchCHR0(SR);
+						}
+						else {
+							SwitchCHRROM(SR);
+						}
+					}
+					else if (address < 0xe000) {
+						if (!(CTRL & 0b10000)) {
+							SwitchCHR1(SR);
+						}
+					}
+					else if (address >= 0xe000) { // Switch PRG
 						SR &= 0b1111;
 						switch ((CTRL >> 2) & 0b11) {
 						case 0:
@@ -204,9 +293,7 @@ public:
 						}
 					}
 					ResetSR();
-
 				}
-
 			}
 		}
 	}
@@ -266,7 +353,9 @@ void WriteHeaderInfo() {
 	std::cout << "TV system: " << (currentROM.PALmode ? "PAL" : "NTSC") << std::endl;
 }
 
-bool LoadROM(char* path = "F:/ninja.nes") {
+class SpriteList;
+
+bool LoadROM(char* path = "F:/mariobros.nes") {
 	std::ifstream reader;
 	reader.open(path, std::ifstream::binary);
 	if (!reader) {
