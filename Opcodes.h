@@ -207,21 +207,18 @@ void StackError(STACK_ERROR err) {
 	switch(err) {
 	case STACK_FULL:
 		cout << "Stack is full on push request!" << endl;
-		system("pause");
 		break;
 	case STACK_EMPTY:
 		cout << "Stack is empty on pull request!" << endl;
-		system("pause");
 		break;
 	default:
 		cout << "Unhandled STACK error" << endl;
-		system("pause");
 		break;
 	}
 }
 
+// Stack is cycled, and even with errors, it passes test
 void PUSH16(short val) {
-	if (SP <= 1) StackError(STACK_FULL);
 	char* v = (char*)&val;
 	STACK[SP] = v[1];
 	SP--;
@@ -229,12 +226,10 @@ void PUSH16(short val) {
 	SP--;
 }
 void PUSH8(char val) {
-	if (SP <= 0) StackError(STACK_FULL);
 	STACK[SP] = val;
 	SP--;
 }
 short PULL16() {
-	if (SP >= 0xff) StackError(STACK_EMPTY);
 	short val;
 	char* v = (char*)&val;
 	SP++;
@@ -244,7 +239,6 @@ short PULL16() {
 	return val;
 }
 char PULL8() {
-	if (SP >= 0xff) StackError(STACK_EMPTY);
 	SP++;
 	return STACK[SP];
 }
@@ -306,12 +300,13 @@ void BPL() {
 	if (!GetSign()) PC = address;
 }
 void BRK() {
-	PC++;
 	PUSH16(PC);
 	SetBreak(1);
+	SET_1();
 	PUSH8(F);
 	SetInterrupt(1);
 	PC = BREAK_ADDR;
+	
 }
 void BVC() {
 	if (!GetOverflow())	PC = address;
@@ -415,7 +410,8 @@ void PHA() {
 	PUSH8(AC);
 }
 void PHP() {
-	//F |= (1 << 5); // set on pop in "other emulator"
+	SetBreak(1);
+	SET_1();
 	PUSH8(F);
 }
 void PLA() {
@@ -510,47 +506,56 @@ void TYA() {
 }
 
 
-//#define UNOFFICIAL
+#define UNOFFICIAL
 #ifdef UNOFFICIAL
 // Unofficial opcodes
 void DOP() {
 	// ok
 }
 void ANC() {
-	value &= AC;
-	SetZero(value);
-	SetSign(value);
-	SetCarry(GetSign());
+	AC &= value;
+	SetNZ(AC);
+	SetCarry(AC&F_SIGN);
 }
 void SAX() {
 	*cell = (AC & X);
 }
 void ARR() {
-	// store? ok
 	AC &= value;
-	bool carry = AC & 0x1;
+	bool carry = AC & 1;
 	AC >>= 1;
 	if (GetCarry()) AC |= 0b10000000;
-	SetCarry(carry);
-	SetSign(AC);
-	SetZero(AC);
+	else AC &= ~0b10000000;
+	switch ((AC & 0b1100000)>>5) {
+		case 0:
+			UNSET_CARRY();
+			UNSET_TRANS();
+			break;
+		case 1:
+			SET_TRANS();
+			UNSET_CARRY();
+			break;
+		case 2:
+			SET_TRANS();
+			SET_CARRY();
+			break;
+		case 3:
+			SET_CARRY();
+			UNSET_TRANS();
+			break;
+	}
+	SetNZ(AC);
 }
 void ALR() {
-	// store? ok
 	AC &= value;
-	bool carry = AC & 0x80;
-	AC <<= 1;
-	if (GetCarry()) AC |= 0b1;
-	SetCarry(carry);
-	SetSign(AC);
-	SetZero(AC);
+	SetCarry(AC & 1);
+	AC = (AC >> 1); // & ~0x80
+	SetNZ(AC);
 }
 void ATX() {
-	// ok
-	AC &= X;
-	X = AC;
-	SetSign(AC);
-	SetZero(AC);
+	ORA();
+	AND();
+	TAX();
 }
 void AXA() {
 	cout << "AXA opcode is unofficial "<<hex<<PC << endl;
@@ -558,20 +563,18 @@ void AXA() {
 	*cell = (AC & X & 7);
 }
 void AXS() {
-	unsigned short temp = X & AC;
+	u16 temp = AC & X;
 	temp -= value;
-	X = temp;
-	SetSign(X);
-	SetZero(X);
-	SetCarry(temp > 0xff);
+	SetCarry(temp < 0x100);
+	X = temp & 0xff;
+	SetNZ(X);
 }
 void DCP() {
 	value = (value - 1) & 0xff;
 	*cell = value;
 	unsigned short temp = (unsigned char)AC - (unsigned char)value;
 	SetCarry(temp < 0x100);
-	SetSign(temp);
-	SetZero(temp & 0xff);
+	SetNZ(temp & 0xff);
 }
 void ISC() {
 	value = (value + 1) & 0xff;
@@ -641,17 +644,18 @@ void SRE() {
 	SetZero(AC);
 }
 void SXA() {
-	cout << "SXA command is unofficial" << endl;
-
-	system("pause");
-
-
+	u8 temp = (X & ((address >> 8) + 1)) & 0xff;
+	u8 val = (address - Y) & 0xFF;
+	if ((Y + val) <= 0xff) {
+		*cell = temp;
+	}
 }
 void SYA() {
-	cout << "SYA command is unofficial" << endl;
-
-	system("pause");
-
+	u8 temp = (Y & ((address >> 8) + 1)) & 0xff;
+	u8 val = (address - X) & 0xFF;
+	if ((X + val) <= 0xff) {
+		*cell = temp;
+	}
 }
 void TOP() {
 	// ok
@@ -813,7 +817,7 @@ void LoadOpcodesTable() {
 	opcodes[0x30] = Opcode("BMI", ADDR_REL, 0x30, BMI, 2, 2);
 	opcodes[0xd0] = Opcode("BNE", ADDR_REL, 0xd0, BNE, 2, 2);
 	opcodes[0x10] = Opcode("BPL", ADDR_REL, 0x10, BPL, 2, 2);
-	opcodes[0x00] = Opcode("BRK", ADDR_IMPL, 0x00, BRK, 2, 7);
+	opcodes[0x00] = Opcode("BRK", ADDR_IMM, 0x00, BRK, 2, 7);
 	opcodes[0x50] = Opcode("BVC", ADDR_REL, 0x50, BVC, 2, 2);
 	opcodes[0x70] = Opcode("BVS", ADDR_REL, 0x70, BVS, 2, 2);
 	opcodes[0x18] = Opcode("CLC", ADDR_IMPL, 0x18, CLC, 1, 2);

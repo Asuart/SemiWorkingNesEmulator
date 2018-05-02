@@ -119,6 +119,7 @@ void RenderBG() {
 	if (pg1 & 1) pg2 = pg1 & 0b10;
 	else pg2 = (pg1 & 0b10) | 1;
 
+
 	char fullLine[32 * 8 * 4 * 2];
 	Color clearColor = palette.GetColor(SPRPalette[0]);
 	for (int i = 0; i < 32 * 16; i++) {
@@ -127,7 +128,6 @@ void RenderBG() {
 		fullLine[i * 4 + 2] = clearColor.b;
 		fullLine[i * 4 + 3] = 0;
 	}
-
 	for (int i = 0; i < 32; i++) {
 		curColorSet = pages[pg1].params[(numY / 4) * 8 + i / 4];
 		curColorSet = (curColorSet >> (((((i % 4)) / 2) | (((numY % 4) / 2) << 1)) * 2)) & 0b11;
@@ -138,7 +138,7 @@ void RenderBG() {
 		curColorSet = (curColorSet >> (((((i % 4)) / 2) | (((numY % 4) / 2) << 1)) * 2)) & 0b11;
 		spriteList[GetBGPattern()].DrawLine(pages[pg2].data[numY * 32 + i - 32], line, (u8*)(fullLine + (i * 8 * 4)));
 	}
-	for (int i = curScrollX, j = 0; j < 256; i++, j++) {
+	for (int i = curScrollX, j = (GetLeftLineBG() ? 0 : 8); j < 256; i++, j++) {
 		screenSpriteData[scanline * 256 * 4 + j * 4] = fullLine[i * 4];
 		screenSpriteData[scanline * 256 * 4 + j * 4 + 1] = fullLine[i * 4 + 1];
 		screenSpriteData[scanline * 256 * 4 + j * 4 + 2] = fullLine[i * 4 + 2];
@@ -158,6 +158,7 @@ void RenderSPR() {
 	drawSprite = true;
 	CurPalette = SPRPalette;
 	unsigned char line = 0;
+
 	if (GetSPRSize()) {
 		for (int i = OAMAddress; i < 256; i += 4) {
 			unsigned char patternTable = OAM[i + 1] & 1;
@@ -177,7 +178,7 @@ void RenderSPR() {
 				// mask pixels over screen
 				if (OAM[i] + line < 240 && scanline * 1024 + OAM[i + 3] * 4 <= 1024 * 240 - 32) {
 					// flip horizontal
-					if (OAM[i + 2] & (1 << 6)) spriteList[patternTable].DrawLine(sprCode, line, (u8*)screenSpriteData + scanline * 1024 + OAM[i + 3] * 4,true);
+					if (OAM[i + 2] & (1 << 6)) spriteList[patternTable].DrawLine(sprCode, line, (u8*)screenSpriteData + scanline * 1024 + OAM[i + 3] * 4, true);
 					else spriteList[patternTable].DrawLine(sprCode, line, (u8*)screenSpriteData + scanline * 1024 + OAM[i + 3] * 4);
 				}
 			}
@@ -185,19 +186,21 @@ void RenderSPR() {
 	}
 	else {
 		for (int i = OAMAddress; i < 256; i += 4) {
-			curColorSet = (OAM[i + 2] & 0b11);
-			BotSPR = (OAM[i + 2] & (1 << 5));
-			// tile on line
-			if (OAM[i] >= scanline && OAM[i] < scanline + 8) {
-				// flip vertical
-				if (OAM[i + 2] & 0x80) line = (OAM[i] - scanline);
-				else line = 7 - (OAM[i] - scanline);
-				// mask pixels over screen
-				if (OAM[i] + line < 240 && scanline * 1024 + OAM[i + 3] * 4 <= 1024 * 240 - 32) {
-					// flip horizontal
-					if (OAM[i + 2] & (1 << 6)) spriteList[GetSPRPattern()].DrawLine(OAM[i + 1], line, (u8*)screenSpriteData + scanline * 1024 + OAM[i + 3] * 4,true);
-					else spriteList[GetSPRPattern()].DrawLine(OAM[i + 1], line, (u8*)screenSpriteData + scanline * 1024 + OAM[i + 3] * 4);
+			if (!(OAM[i + 3] < 8 && !GetLeftLineSPR())) {
+				curColorSet = (OAM[i + 2] & 0b11);
+				BotSPR = (OAM[i + 2] & (1 << 5));
+				if (OAM[i] >= scanline && OAM[i] < scanline + 8) {
+					// flip vertical
+					if (OAM[i + 2] & 0x80) line = (OAM[i] - scanline);
+					else line = 7 - (OAM[i] - scanline);
+					// mask pixels over screen
+					if (OAM[i] + line < 240 && scanline * 1024 + OAM[i + 3] * 4 <= 1024 * 240 - 32) {
+						// flip horizontal
+						if (OAM[i + 2] & (1 << 6)) spriteList[GetSPRPattern()].DrawLine(OAM[i + 1], line, (u8*)screenSpriteData + scanline * 1024 + OAM[i + 3] * 4, true);
+						else spriteList[GetSPRPattern()].DrawLine(OAM[i + 1], line, (u8*)screenSpriteData + scanline * 1024 + OAM[i + 3] * 4);
+					}
 				}
+
 			}
 		}
 	}
@@ -222,6 +225,7 @@ void PresentFrame() {
 
 	glfwSwapBuffers(mainWindow);
 
+	for (int i = 0; i < 256 * 240 * 4; i++) screenSpriteData[i] = 0;
 	LimitFPS();
 }
 void PreRender() {
@@ -284,9 +288,16 @@ void CheckInput() {
 	if (glfwGetKey(mainWindow, GLFW_KEY_SPACE)) {
 		cout << "pause" << endl;
 		while (!glfwGetKey(mainWindow, GLFW_KEY_Q)) {
+			if (glfwGetKey(mainWindow, GLFW_KEY_ESCAPE)) {
+
+				break;
+			}
 			glfwPollEvents();
 		}
 		cout << "unpause" << endl;
+	}
+	else if (glfwGetKey(mainWindow, GLFW_KEY_ESCAPE)) {
+		glfwSetWindowShouldClose(mainWindow, true);
 	}
 }
 
@@ -334,7 +345,7 @@ int main() {
 	glBindBuffer(GL_ARRAY_BUFFER, screenPlaneObject);
 	glBindTexture(GL_TEXTURE_2D, screenSprite);
 
-	while (true) {
+	while (!glfwWindowShouldClose(mainWindow)) {
 		NextLine();
 		CheckInput();
 		glfwPollEvents();

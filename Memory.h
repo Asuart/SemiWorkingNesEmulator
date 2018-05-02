@@ -353,9 +353,7 @@ void WriteHeaderInfo() {
 	std::cout << "TV system: " << (currentROM.PALmode ? "PAL" : "NTSC") << std::endl;
 }
 
-class SpriteList;
-
-bool LoadROM(char* path = "F:/mariobros.nes") {
+bool LoadROM(char* path = "F:/nestest/sprhit/2.nes") {
 	std::ifstream reader;
 	reader.open(path, std::ifstream::binary);
 	if (!reader) {

@@ -105,7 +105,7 @@ bool InitWindow() {
 		cout << "Init glfw failed" << endl;
 		return false;
 	}
-	mainWindow = glfwCreateWindow(SCREEN_WIDTH*SCREEN_SCALE, SCREEN_HEIGHT*SCREEN_SCALE, "emu", NULL, NULL);
+	mainWindow = glfwCreateWindow(SCREEN_WIDTH*SCREEN_SCALE, SCREEN_HEIGHT*SCREEN_SCALE, "NES-MULATOR", NULL, NULL);
 	if (!mainWindow) {
 		cout << "Init window failed" << endl;
 		glfwTerminate();
@@ -272,14 +272,10 @@ struct SpriteList {
 					sprite[i * 4 + 2] = col.b;
 					sprite[i * 4 + 3] = 1;
 				}
-				else {
-					if (sprite[i * 4 + 3] == 0) {
-						sprite[i * 4] = col.r;
-						sprite[i * 4 + 1] = col.g;
-						sprite[i * 4 + 2] = col.b;
-					}
-					else if (!BotSPR) {
-						SetSpriteHit(1);
+				else {		
+					if (sprite[i * 4 + 3]) SetSpriteHit(1); // Hit even under BG
+
+					if (sprite[i * 4 + 3] == 0 || !BotSPR) {
 						sprite[i * 4] = col.r;
 						sprite[i * 4 + 1] = col.g;
 						sprite[i * 4 + 2] = col.b;
