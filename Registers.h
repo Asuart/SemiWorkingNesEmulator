@@ -35,12 +35,14 @@ u8 scrollX, scrollY;
 u8 OAMAddress;
 
 u32 cycle = 0;
-s32 CyclesDown = 0;
+u8 cpuCycles = 0;
 
 u16 scanline = 261;
 
 bool BotSPR = false; // Hide sprite under BG
 bool drawSprite = false; // Now drawing sprite
+
+bool disableSpriteHit = false;
 
 #define SET_CARRY() F |= F_CARRY
 #define UNSET_CARRY() F &= ~F_CARRY

@@ -353,7 +353,22 @@ void WriteHeaderInfo() {
 	std::cout << "TV system: " << (currentROM.PALmode ? "PAL" : "NTSC") << std::endl;
 }
 
-bool LoadROM(char* path = "F:/nestest/sprhit/2.nes") {
+void LoadInterruptVectors() {
+	// get nmi address
+	char* p = (char*)&NMI_ADDR;
+	p[0] = mmc->ReadROM(0xfffa);
+	p[1] = mmc->ReadROM(0xfffb);
+	// get reset address
+	p = (char*)&RESET_ADDR;
+	p[0] = mmc->ReadROM(0xfffc);
+	p[1] = mmc->ReadROM(0xfffd);
+	// get break address
+	p = (char*)&BREAK_ADDR;
+	p[0] = mmc->ReadROM(0xfffe);
+	p[1] = mmc->ReadROM(0xffff);
+}
+
+bool LoadROM(char* path = "F:/mariobros.nes") {
 	std::ifstream reader;
 	reader.open(path, std::ifstream::binary);
 	if (!reader) {
@@ -384,7 +399,6 @@ bool LoadROM(char* path = "F:/nestest/sprhit/2.nes") {
 	currentROM.CHRROMcount = ROMdata[5];
 	currentROM.PRGRAMcount = ROMdata[8];
 	currentROM.mapper = mapper;
-
 	WriteHeaderInfo();
 
 	if (currentROM.PALmode) {
@@ -395,6 +409,7 @@ bool LoadROM(char* path = "F:/nestest/sprhit/2.nes") {
 	mmc = CreateMapper(currentROM.mapper);
 	mmc->LoadFromROM((u8*)ROMdata);
 	InitPointers();
+	LoadInterruptVectors();
 
 	delete[] ROMdata;
 }

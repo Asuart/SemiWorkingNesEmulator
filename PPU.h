@@ -67,11 +67,11 @@ bool GetSPRSize() {
 bool GetNMIEnabled() {
 	return mmc->ReadROM(0x2000) & (1 << 7);
 }
-bool GetLeftLineBG() {
-	return mmc->ReadROM(0x2001) & (1 << 1);
+bool GetClipBG() {
+	return !(mmc->ReadROM(0x2001) & (1 << 1));
 }
-bool GetLeftLineSPR() {
-	return mmc->ReadROM(0x2001) & (1 << 2);
+bool GetClipSPR() {
+	return !(mmc->ReadROM(0x2001) & (1 << 2));
 }
 bool GetShowBG() {
 	return mmc->ReadROM(0x2001) & (1 << 3);
@@ -149,6 +149,9 @@ bool InitGL() {
 	glEnableVertexAttribArray(1);
 
 	glUseProgram(shader);
+	glBindVertexArray(screenVAO);
+	glBindBuffer(GL_ARRAY_BUFFER, screenPlaneObject);
+	glBindTexture(GL_TEXTURE_2D, screenSprite);
 
 	return false;
 }
@@ -246,12 +249,11 @@ struct SpriteList {
 		patternTable = patternTableAddress;
 	}
 
-	void DrawLine(u8 tile, u8 line, u8* sprite, bool mirrored = false) {
+	void DrawLine(u8 tile, u8 line, u8* sprite, u8 start, bool mirrored = false) {
 		u8 l1, l2, pixel;
 		l1 = patternTable[tile * 16 + line];
 		l2 = patternTable[tile * 16 + line + 8];
-		for (int i = 0; i < 8; i++) {
-			// Get pixel
+		for (int i = start; i < start + 8 && i < 256; i++) {
 			if (!mirrored) {
 				pixel = (((l1 >> 7) & 0b1) | ((l2 >> 6) & 0b10)) & 0b11;
 				l1 <<= 1;
@@ -262,25 +264,12 @@ struct SpriteList {
 				l1 >>= 1;
 				l2 >>= 1;
 			}
-
 			if (pixel) {
-				// draw pixel
 				Color col = palette.GetColor(CurPalette[(curColorSet << 2) | pixel]);
-				if (!drawSprite) {
-					sprite[i * 4] = col.r;
-					sprite[i * 4 + 1] = col.g;
-					sprite[i * 4 + 2] = col.b;
-					sprite[i * 4 + 3] = 1;
-				}
-				else {		
-					if (sprite[i * 4 + 3]) SetSpriteHit(1); // Hit even under BG
-
-					if (sprite[i * 4 + 3] == 0 || !BotSPR) {
-						sprite[i * 4] = col.r;
-						sprite[i * 4 + 1] = col.g;
-						sprite[i * 4 + 2] = col.b;
-					}
-				}
+				sprite[i * 4] = col.r;
+				sprite[i * 4 + 1] = col.g;
+				sprite[i * 4 + 2] = col.b;
+				sprite[i * 4 + 3] = 1;
 			}
 		}
 	}

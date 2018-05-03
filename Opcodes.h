@@ -248,12 +248,6 @@ void Disasm() {
 	cout << "Address and value: " << address << ":" << (int)value << endl;
 }
 
-void Step() {
-	GetOpcode();
-	opcodes[opcode].exec();
-	CyclesDown -= opcodes[opcode].cycles;
-}
-
 void NONE() {
 	cout << "Used unregistered opcode: " << hex << opcode << endl;
 }

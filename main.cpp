@@ -1,7 +1,19 @@
-//#define ASM
 #include "PPU.h"
 #include <Windows.h>
 #include <string>
+
+const u32 BGLineLength = 32 * 2 * 8 * 4; // tiles * 2 pages * pixels per tile * params per pixel;
+const u32 SPRLineLength = 32 * 8 * 4; // tiles * pixels per tile * params per pixel;
+const u16 scanlineCount = 262; // Scanlines per frame;
+const u16 scanlineCycles = 341; // Pixel per scanline;
+
+u8 currentBGLine[BGLineLength];
+u8 currentSPRLine[SPRLineLength];
+
+u16 currentPixel = 0;
+
+void(*ppuPipeline[scanlineCount][scanlineCycles])();
+
 
 unsigned char GetKeyState(char key) {
 	switch (key) {
@@ -33,7 +45,6 @@ unsigned char GetKeyState(char key) {
 		return 0;
 	}
 }
-
 void HandleControlWrite() {
 	if (address == 0x2002) {
 		*mmc->GetROMCell(0x2002) &= ~0x80;
@@ -93,129 +104,14 @@ void HandleControlWrite() {
 	}
 	writeOperation = false;
 }
-
-void Run(int numCycles) {
-	CyclesDown += numCycles;
-	while (CyclesDown > 0) {
-		cycle++;
-		Step();
-		mmc->UpdateState();
-		HandleControlWrite();
-	}
-}
-
-void RenderBG() {
-	drawSprite = false;
-	CurPalette = BGPalette;
-
-	unsigned short curScanline = scanline + curScrollY;
-	int line = curScanline % 8;
-	int numY = ((curScanline % 240) >> 3) + 1;
-
-	char pg1 = GetCurPage();
-	if (scanline + curScrollY > 0xff) 
-		(pg1 & 0b10) ? pg1 &= ~0b10 : pg1 |= 0b10;
-	char pg2;
-	if (pg1 & 1) pg2 = pg1 & 0b10;
-	else pg2 = (pg1 & 0b10) | 1;
-
-
-	char fullLine[32 * 8 * 4 * 2];
-	Color clearColor = palette.GetColor(SPRPalette[0]);
-	for (int i = 0; i < 32 * 16; i++) {
-		fullLine[i * 4] = clearColor.r;
-		fullLine[i * 4 + 1] = clearColor.g;
-		fullLine[i * 4 + 2] = clearColor.b;
-		fullLine[i * 4 + 3] = 0;
-	}
-	for (int i = 0; i < 32; i++) {
-		curColorSet = pages[pg1].params[(numY / 4) * 8 + i / 4];
-		curColorSet = (curColorSet >> (((((i % 4)) / 2) | (((numY % 4) / 2) << 1)) * 2)) & 0b11;
-		spriteList[GetBGPattern()].DrawLine(pages[pg1].data[numY * 32 + i], line, (u8*)(fullLine + (i * 8 * 4)));
-	}
-	for (int i = 32; i < 64; i++) {
-		curColorSet = pages[pg2].params[(numY / 4) * 8 + (i - 32) / 4];
-		curColorSet = (curColorSet >> (((((i % 4)) / 2) | (((numY % 4) / 2) << 1)) * 2)) & 0b11;
-		spriteList[GetBGPattern()].DrawLine(pages[pg2].data[numY * 32 + i - 32], line, (u8*)(fullLine + (i * 8 * 4)));
-	}
-	for (int i = curScrollX, j = (GetLeftLineBG() ? 0 : 8); j < 256; i++, j++) {
-		screenSpriteData[scanline * 256 * 4 + j * 4] = fullLine[i * 4];
-		screenSpriteData[scanline * 256 * 4 + j * 4 + 1] = fullLine[i * 4 + 1];
-		screenSpriteData[scanline * 256 * 4 + j * 4 + 2] = fullLine[i * 4 + 2];
-		screenSpriteData[scanline * 256 * 4 + j * 4 + 3] = fullLine[i * 4 + 3];
-	}
-}
-void EvaluateSPR() {
-	unsigned char spritesCount = 0;
-	for (int i = OAMAddress; i < 256; i += 4) {
-		if (OAM[i] >= scanline && OAM[i] < scanline + 8) {
-			if ((OAM[i + 3] < 8 && GetLeftLineSPR()) || (OAM[i + 3] > 7 && OAM[i + 3] < 255)) spritesCount++;
-		}
-	}
-	if (spritesCount > 8) SetSpriteOverflow(1);
-}
-void RenderSPR() {
-	drawSprite = true;
-	CurPalette = SPRPalette;
-	unsigned char line = 0;
-
-	if (GetSPRSize()) {
-		for (int i = OAMAddress; i < 256; i += 4) {
-			unsigned char patternTable = OAM[i + 1] & 1;
-			unsigned char sprCode = ((OAM[i + 1] >> 1) & ~0x80) * 2;
-			unsigned char sprHeight = 16;
-			curColorSet = (OAM[i + 2] & 0b11);
-			BotSPR = (OAM[i + 2] & (1 << 5));
-			//tile on line
-			if (OAM[i] >= scanline - 8 && OAM[i] < scanline + 8) {
-				// flip vertical
-				if (OAM[i + 2] & 0x80) line = (OAM[i] - scanline);
-				else line = 7 - (OAM[i] - scanline);
-				if (line > 7) {
-					sprCode++;
-					line %= 8;
-				}
-				// mask pixels over screen
-				if (OAM[i] + line < 240 && scanline * 1024 + OAM[i + 3] * 4 <= 1024 * 240 - 32) {
-					// flip horizontal
-					if (OAM[i + 2] & (1 << 6)) spriteList[patternTable].DrawLine(sprCode, line, (u8*)screenSpriteData + scanline * 1024 + OAM[i + 3] * 4, true);
-					else spriteList[patternTable].DrawLine(sprCode, line, (u8*)screenSpriteData + scanline * 1024 + OAM[i + 3] * 4);
-				}
-			}
-		}
-	}
-	else {
-		for (int i = OAMAddress; i < 256; i += 4) {
-			if (!(OAM[i + 3] < 8 && !GetLeftLineSPR())) {
-				curColorSet = (OAM[i + 2] & 0b11);
-				BotSPR = (OAM[i + 2] & (1 << 5));
-				if (OAM[i] >= scanline && OAM[i] < scanline + 8) {
-					// flip vertical
-					if (OAM[i + 2] & 0x80) line = (OAM[i] - scanline);
-					else line = 7 - (OAM[i] - scanline);
-					// mask pixels over screen
-					if (OAM[i] + line < 240 && scanline * 1024 + OAM[i + 3] * 4 <= 1024 * 240 - 32) {
-						// flip horizontal
-						if (OAM[i + 2] & (1 << 6)) spriteList[GetSPRPattern()].DrawLine(OAM[i + 1], line, (u8*)screenSpriteData + scanline * 1024 + OAM[i + 3] * 4, true);
-						else spriteList[GetSPRPattern()].DrawLine(OAM[i + 1], line, (u8*)screenSpriteData + scanline * 1024 + OAM[i + 3] * 4);
-					}
-				}
-
-			}
-		}
-	}
-}
-
 void HandleNMI() {
 	PUSH16(PC);
 	PUSH8(F);
 	PC = NMI_ADDR;
 }
-
 void LimitFPS() {
 	Sleep(1000.0 / 80.0);
 }
-
 void PresentFrame() {
 	glClear(GL_COLOR_BUFFER_BIT);
 
@@ -228,62 +124,6 @@ void PresentFrame() {
 	for (int i = 0; i < 256 * 240 * 4; i++) screenSpriteData[i] = 0;
 	LimitFPS();
 }
-void PreRender() {
-	SetVBlank(0);
-	SetSpriteOverflow(0);
-	SetSpriteHit(0);
-	SetWriteLock(0);
-
-	OAMAddress = 0;
-	curScrollX = scrollX;
-	curScrollY = scrollY;
-}
-void RenderScanline() {
-	if (GetShowBG()) {
-		RenderBG();
-		curScrollX = scrollX;
-	}
-	if (GetShowSPR()) {
-		EvaluateSPR();
-		RenderSPR();
-	}
-	OAMAddress = 0;
-}
-void PostRender() {
-	// wiki says it is safe and timings a bit better
-	SetVBlank(1);
-	SetWriteLock(1);
-	PresentFrame();
-	if (GetNMIEnabled()) {
-		HandleNMI();
-	}
-}
-void DuringVBlank() {
-	// nothing
-}
-
-void HBlank() {
-	if (scanline >= 0 && scanline < 240) {
-		RenderScanline();
-	}
-	else if (scanline == 240) {
-		PostRender(); // start VBlank
-	}
-	else if (scanline > 240 && scanline <= 260) {
-		DuringVBlank(); // idle
-	}
-	else if (scanline == 261) {
-		PreRender();
-		scanline = -1;
-	}
-	scanline++;
-}
-
-void NextLine() {
-	Run(113);
-	HBlank();
-}
-
 void CheckInput() {
 	if (glfwGetKey(mainWindow, GLFW_KEY_SPACE)) {
 		cout << "pause" << endl;
@@ -301,6 +141,152 @@ void CheckInput() {
 	}
 }
 
+
+
+void PreRender() {
+	SetVBlank(0);
+	SetSpriteOverflow(0);
+	SetSpriteHit(0);
+	SetWriteLock(0);
+
+	OAMAddress = 0;
+	curScrollX = scrollX;
+	curScrollY = scrollY;
+}
+
+void PrerenderBGLine() {
+	CurPalette = BGPalette;
+	u8 currentPattern = GetBGPattern();
+	u16 curScanline = scanline + curScrollY;
+	u8 line = curScanline % 8;
+	u8 numY = ((curScanline % 240) >> 3) + 1;
+
+	// Set pages
+	u8 pg1 = GetCurPage();
+	if (scanline + curScrollY > 0xff)
+		(pg1 & 0b10) ? pg1 &= ~0b10 : pg1 |= 0b10;
+	u8 pg2;
+	if (pg1 & 1) pg2 = pg1 & 0b10;
+	else pg2 = (pg1 & 0b10) | 1;
+
+	memset(currentBGLine, 0, BGLineLength); // Clear BG line
+
+	for (int i = 0; i < 32; i++) {
+		curColorSet = pages[pg1].params[(numY / 4) * 8 + i / 4];
+		curColorSet = (curColorSet >> (((((i % 4)) / 2) | (((numY % 4) / 2) << 1)) * 2)) & 0b11;
+		spriteList[currentPattern].DrawLine(pages[pg1].data[numY * 32 + i], line, currentBGLine, i * 8);
+	}
+	for (int i = 32; i < 64; i++) {
+		curColorSet = pages[pg2].params[(numY / 4) * 8 + (i - 32) / 4];
+		curColorSet = (curColorSet >> (((((i % 4)) / 2) | (((numY % 4) / 2) << 1)) * 2)) & 0b11;
+		spriteList[currentPattern].DrawLine(pages[pg2].data[(numY-1) * 32 + i], line, currentBGLine + 1024, i * 8);
+	}
+}
+void PrerenderSPRLine() {
+	CurPalette = SPRPalette;
+	u8 line = 0;
+	memset(currentSPRLine, 0, SPRLineLength); // Clear SPR Line
+
+	for (int i = OAMAddress; i < 256; i += 4) {
+		curColorSet = (OAM[i + 2] & 0b11);
+		if (OAM[i] >= scanline && OAM[i] < scanline + 8) {
+			// flip vertical
+			if (OAM[i + 2] & 0x80) line = (OAM[i] - scanline);
+			else line = 7 - (OAM[i] - scanline);
+			// mask pixels over screen
+			if (OAM[i] + line < 240 && scanline * 1024 + OAM[i + 3] * 4 <= 1024 * 240 - 32) {
+				// flip horizontal
+				if (OAM[i + 2] & (1 << 6)) spriteList[GetSPRPattern()].DrawLine(OAM[i + 1], line, currentSPRLine, OAM[i + 3], true);
+				else spriteList[GetSPRPattern()].DrawLine(OAM[i + 1], line, currentSPRLine, OAM[i + 3], false);
+			}
+		}
+	}
+}
+
+void Idle() {
+}
+void FetchPixel() {
+	screenSpriteData[scanline * 1024 + currentPixel * 4] = currentBGLine[(currentPixel + curScrollX) * 4];
+	screenSpriteData[scanline * 1024 + currentPixel * 4 + 1] = currentBGLine[(currentPixel + curScrollX) * 4 + 1];
+	screenSpriteData[scanline * 1024 + currentPixel * 4 + 2] = currentBGLine[(currentPixel + curScrollX) * 4 + 2];
+	if (currentSPRLine[currentPixel * 4 + 3]) {
+		if(currentBGLine[(currentPixel + curScrollX) * 4 + 3] && currentSPRLine[currentPixel  * 4 + 3]) SetSpriteHit(1);
+
+		screenSpriteData[scanline * 1024 + currentPixel * 4] = currentSPRLine[currentPixel * 4];
+		screenSpriteData[scanline * 1024 + currentPixel * 4 + 1] = currentSPRLine[currentPixel * 4 + 1];
+		screenSpriteData[scanline * 1024 + currentPixel * 4 + 2] = currentSPRLine[currentPixel * 4 + 2];
+	}
+}
+void ReloadXScroll() {
+	curScrollX = scrollX;
+}
+void ReloadYScroll() {
+	curScrollY = scrollY;
+}
+void StartVBlank() {
+	SetVBlank(1);
+	SetWriteLock(1);
+	PresentFrame();
+	if (GetNMIEnabled()) HandleNMI();
+}
+void EndVBlank() {
+	SetVBlank(0);
+	SetSpriteHit(0);
+	SetSpriteOverflow(0);
+}
+void StartLine() {
+	PrerenderSPRLine();
+	PrerenderBGLine();
+	FetchPixel();
+}
+
+void InitPPUPipeline() {
+	// Reset ALL to idle for safe
+	for (int i = 0; i < scanlineCount; i++) {
+		for (int j = 0; j < scanlineCycles; j++) {
+			ppuPipeline[i][j] = Idle;
+		}
+	}
+
+	// Set actual Pipeline
+	for (int i = 0; i < 240; i++) {
+		for (int j = 2; j < 257; j++) {
+			ppuPipeline[i][j] = FetchPixel;
+		}
+		ppuPipeline[i][257] = ReloadXScroll;
+		ppuPipeline[i][1] = StartLine;
+	}
+	ppuPipeline[261][280] = ReloadYScroll;
+	ppuPipeline[241][1] = StartVBlank;
+	ppuPipeline[261][1] = EndVBlank;
+}
+
+void CPUStep() {
+	GetOpcode();
+	opcodes[opcode].exec();
+	cpuCycles = opcodes[opcode].cycles;
+}
+
+void PPUStep() {
+	ppuPipeline[scanline][currentPixel]();
+	currentPixel++;
+
+	// cycles the ppu programm
+	if (currentPixel == 341) {
+		currentPixel = 0;
+		scanline++;
+		if (scanline == 262) scanline = 0;
+	}
+}
+void Step() {
+	CPUStep();
+	HandleControlWrite();
+	for (int i = 0; i < cpuCycles * 3; i++) PPUStep(); // 1 cpu cycle = 3 ppu cycles, and 1 ppu cycle = 1 ppu step.
+}
+void Run(int numCycles) {
+	for (int i = 0; i < numCycles; i++) Step();
+}
+
 int main() {
 	InitWindow();
 	InitGL();
@@ -308,6 +294,7 @@ int main() {
 
 	palette.LoadColorTable();
 	LoadOpcodesTable();
+	InitPPUPipeline();
 
 	spriteList[0] = SpriteList(mmc->GetVRAMCell(0x0));
 	spriteList[1] = SpriteList(mmc->GetVRAMCell(0x1000));
@@ -320,6 +307,7 @@ int main() {
 		SetMirroringHorizontal();
 
 	// pressets
+	PC = RESET_ADDR;
 	F = 0x34;
 	AC = X = Y = 0;
 	SP = 0xfd;
@@ -327,26 +315,8 @@ int main() {
 	vramPointer = 0x2000;
 	scanline = 261;
 
-	// get nmi address
-	char* p = (char*)&NMI_ADDR;
-	p[0] = mmc->ReadROM(0xfffa);
-	p[1] = mmc->ReadROM(0xfffb);
-	// get reset address
-	p = (char*)&RESET_ADDR;
-	p[0] = mmc->ReadROM(0xfffc);
-	p[1] = mmc->ReadROM(0xfffd);
-	// get break address
-	p = (char*)&BREAK_ADDR;
-	p[0] = mmc->ReadROM(0xfffe);
-	p[1] = mmc->ReadROM(0xffff);
-	PC = RESET_ADDR;
-
-	glBindVertexArray(screenVAO);
-	glBindBuffer(GL_ARRAY_BUFFER, screenPlaneObject);
-	glBindTexture(GL_TEXTURE_2D, screenSprite);
-
 	while (!glfwWindowShouldClose(mainWindow)) {
-		NextLine();
+		Run(200); // Run for 200 CPU cycles, then check for input
 		CheckInput();
 		glfwPollEvents();
 	}
