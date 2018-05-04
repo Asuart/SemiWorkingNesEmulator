@@ -3,12 +3,13 @@
 #include <string>
 
 const u32 BGLineLength = 32 * 2 * 8 * 4; // tiles * 2 pages * pixels per tile * params per pixel;
-const u32 SPRLineLength = 32 * 8 * 4; // tiles * pixels per tile * params per pixel;
+const u32 SPRLineLength = 32 * 8 * 4 + 32; // tiles * pixels per tile * params per pixel; + 32 to safe buffer overflow for sprites at x = 255
 const u16 scanlineCount = 262; // Scanlines per frame;
 const u16 scanlineCycles = 341; // Pixel per scanline;
 
 u8 currentBGLine[BGLineLength];
 u8 currentSPRLine[SPRLineLength];
+u8* screenSpriteArea = &screenSpriteData[256 * 8 * 4];
 
 u16 currentPixel = 0;
 
@@ -115,7 +116,7 @@ void LimitFPS() {
 void PresentFrame() {
 	glClear(GL_COLOR_BUFFER_BIT);
 
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, SCREEN_WIDTH, NTSC_VIEW_HEIGHT, 0, GL_RGBA, GL_UNSIGNED_BYTE, (GLvoid*)screenSpriteData);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, SCREEN_WIDTH, 224, 0, GL_RGBA, GL_UNSIGNED_BYTE, (GLvoid*)screenSpriteData);
 	glGenerateMipmap(GL_TEXTURE_2D);
 	glDrawArrays(GL_TRIANGLES, 0, 6);
 
@@ -142,17 +143,10 @@ void CheckInput() {
 }
 
 
-
-void PreRender() {
-	SetVBlank(0);
-	SetSpriteOverflow(0);
-	SetSpriteHit(0);
-	SetWriteLock(0);
-
-	OAMAddress = 0;
-	curScrollX = scrollX;
-	curScrollY = scrollY;
+void ClearScreenSprite() {
+	memset(screenSpriteData, 0, 256 * 240 * 4);
 }
+
 
 void PrerenderBGLine() {
 	CurPalette = BGPalette;
@@ -171,52 +165,107 @@ void PrerenderBGLine() {
 
 	memset(currentBGLine, 0, BGLineLength); // Clear BG line
 
+
 	for (int i = 0; i < 32; i++) {
 		curColorSet = pages[pg1].params[(numY / 4) * 8 + i / 4];
-		curColorSet = (curColorSet >> (((((i % 4)) / 2) | (((numY % 4) / 2) << 1)) * 2)) & 0b11;
+		curColorSet = (curColorSet >> ((((i % 4) / 2) | (((numY % 4) / 2) << 1)) * 2)) & 0b11;
 		spriteList[currentPattern].DrawLine(pages[pg1].data[numY * 32 + i], line, currentBGLine, i * 8);
 	}
 	for (int i = 32; i < 64; i++) {
 		curColorSet = pages[pg2].params[(numY / 4) * 8 + (i - 32) / 4];
 		curColorSet = (curColorSet >> (((((i % 4)) / 2) | (((numY % 4) / 2) << 1)) * 2)) & 0b11;
-		spriteList[currentPattern].DrawLine(pages[pg2].data[(numY-1) * 32 + i], line, currentBGLine + 1024, i * 8);
+		spriteList[currentPattern].DrawLine(pages[pg2].data[(numY - 1) * 32 + i], line, currentBGLine + 1024, i * 8);
 	}
 }
 void PrerenderSPRLine() {
+	//scanline -= 8;
 	CurPalette = SPRPalette;
 	u8 line = 0;
 	memset(currentSPRLine, 0, SPRLineLength); // Clear SPR Line
 
 	for (int i = OAMAddress; i < 256; i += 4) {
 		curColorSet = (OAM[i + 2] & 0b11);
-		if (OAM[i] >= scanline && OAM[i] < scanline + 8) {
-			// flip vertical
-			if (OAM[i + 2] & 0x80) line = (OAM[i] - scanline);
-			else line = 7 - (OAM[i] - scanline);
-			// mask pixels over screen
-			if (OAM[i] + line < 240 && scanline * 1024 + OAM[i + 3] * 4 <= 1024 * 240 - 32) {
-				// flip horizontal
+
+		if (GetSPRSize()) {
+			unsigned char patternTable = OAM[i + 1] & 1;
+			unsigned char sprCode = ((OAM[i + 1] >> 1) & ~0x80) * 2;
+			unsigned char sprHeight = 16;
+			curColorSet = (OAM[i + 2] & 0b11);
+			if (OAM[i] >= scanline - 8 && OAM[i] < scanline + 8) {
+				if (OAM[i + 2] & 0x80) line = (OAM[i] - scanline);
+				else line = 7 - (OAM[i] - scanline);
+				if (line > 7) {
+					sprCode++;
+					line %= 8;
+				}
+				if (OAM[i + 2] & (1 << 6)) spriteList[patternTable].DrawLine(sprCode, line, currentSPRLine, OAM[i + 3], true);
+				else spriteList[patternTable].DrawLine(sprCode, line, currentSPRLine, OAM[i + 3], false);
+			}
+		}
+		else {
+			if (OAM[i] >= scanline && OAM[i] < scanline + 8) {
+				// flip vertical
+				if (OAM[i + 2] & 0x80) line = (OAM[i] - scanline);
+				else line = 7 - (OAM[i] - scanline);
+				// mask pixels over screen
+
 				if (OAM[i + 2] & (1 << 6)) spriteList[GetSPRPattern()].DrawLine(OAM[i + 1], line, currentSPRLine, OAM[i + 3], true);
 				else spriteList[GetSPRPattern()].DrawLine(OAM[i + 1], line, currentSPRLine, OAM[i + 3], false);
+
 			}
 		}
 	}
 }
 
+
+bool CheckPixelCollision() {
+	if (currentBGLine[(currentPixel - 1 + curScrollX) * 4 + 3] && currentSPRLine[(currentPixel - 1) * 4 + 3]) return true;
+	return false;
+}
+bool CheckPixelClipped() {
+	if (currentPixel - 1 < 8) {
+		if (GetClipBG() || GetClipSPR()) return true;
+	}
+	return false;
+}
+bool CheckRendering() {
+	if (GetShowSPR() && GetShowBG()) return true;
+	return false;
+}
+
 void Idle() {
 }
 void FetchPixel() {
-	screenSpriteData[scanline * 1024 + currentPixel * 4] = currentBGLine[(currentPixel + curScrollX) * 4];
-	screenSpriteData[scanline * 1024 + currentPixel * 4 + 1] = currentBGLine[(currentPixel + curScrollX) * 4 + 1];
-	screenSpriteData[scanline * 1024 + currentPixel * 4 + 2] = currentBGLine[(currentPixel + curScrollX) * 4 + 2];
-	if (currentSPRLine[currentPixel * 4 + 3]) {
-		if(currentBGLine[(currentPixel + curScrollX) * 4 + 3] && currentSPRLine[currentPixel  * 4 + 3]) SetSpriteHit(1);
+	u16 pixel = currentPixel - 1;
 
-		screenSpriteData[scanline * 1024 + currentPixel * 4] = currentSPRLine[currentPixel * 4];
-		screenSpriteData[scanline * 1024 + currentPixel * 4 + 1] = currentSPRLine[currentPixel * 4 + 1];
-		screenSpriteData[scanline * 1024 + currentPixel * 4 + 2] = currentSPRLine[currentPixel * 4 + 2];
+
+
+	if (currentBGLine[(pixel + curScrollX) * 4 + 3] && !(pixel < 8 && GetClipBG()) && GetShowBG()) {
+		screenSpriteData[scanline * 1024 + pixel * 4] = currentBGLine[(pixel + curScrollX) * 4];
+		screenSpriteData[scanline * 1024 + pixel * 4 + 1] = currentBGLine[(pixel + curScrollX) * 4 + 1];
+		screenSpriteData[scanline * 1024 + pixel * 4 + 2] = currentBGLine[(pixel + curScrollX) * 4 + 2];
+	}
+	if (currentSPRLine[pixel * 4 + 3] && GetShowSPR() && !(pixel < 8 && GetClipSPR())) {
+		screenSpriteData[scanline * 1024 + pixel * 4] = currentSPRLine[pixel * 4];
+		screenSpriteData[scanline * 1024 + pixel * 4 + 1] = currentSPRLine[pixel * 4 + 1];
+		screenSpriteData[scanline * 1024 + pixel * 4 + 2] = currentSPRLine[pixel * 4 + 2];
+	}
+	
+	// if pixel is hit
+	if (CheckRendering()) {
+		if (CheckPixelCollision()) {
+			if (!CheckPixelClipped()) {
+				if (currentPixel != 256) {
+					if (scanline < 239) {
+
+						SetSpriteHit(1);
+					}
+				}
+			}
+		}
 	}
 }
+
 void ReloadXScroll() {
 	curScrollX = scrollX;
 }
@@ -228,6 +277,7 @@ void StartVBlank() {
 	SetWriteLock(1);
 	PresentFrame();
 	if (GetNMIEnabled()) HandleNMI();
+	ClearScreenSprite();
 }
 void EndVBlank() {
 	SetVBlank(0);
@@ -281,6 +331,7 @@ void PPUStep() {
 void Step() {
 	CPUStep();
 	HandleControlWrite();
+	mmc->UpdateState();
 	for (int i = 0; i < cpuCycles * 3; i++) PPUStep(); // 1 cpu cycle = 3 ppu cycles, and 1 ppu cycle = 1 ppu step.
 }
 void Run(int numCycles) {

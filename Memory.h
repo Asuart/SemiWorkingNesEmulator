@@ -368,7 +368,7 @@ void LoadInterruptVectors() {
 	p[1] = mmc->ReadROM(0xffff);
 }
 
-bool LoadROM(char* path = "F:/mariobros.nes") {
+bool LoadROM(char* path = "F:/baltron.nes") {
 	std::ifstream reader;
 	reader.open(path, std::ifstream::binary);
 	if (!reader) {
@@ -410,6 +410,8 @@ bool LoadROM(char* path = "F:/mariobros.nes") {
 	mmc->LoadFromROM((u8*)ROMdata);
 	InitPointers();
 	LoadInterruptVectors();
+
+	cout << path << endl;
 
 	delete[] ROMdata;
 }
