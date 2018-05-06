@@ -100,62 +100,6 @@ void SetWriteLock(bool flag) {
 	else *mmc->GetROMCell(0x2002) &= ~(1 << 4);
 }
 
-bool InitWindow() {
-	if (!glfwInit()) {
-		cout << "Init glfw failed" << endl;
-		return false;
-	}
-	mainWindow = glfwCreateWindow(SCREEN_WIDTH*SCREEN_SCALE, SCREEN_HEIGHT*SCREEN_SCALE, "NES-MULATOR", NULL, NULL);
-	if (!mainWindow) {
-		cout << "Init window failed" << endl;
-		glfwTerminate();
-		return false;
-	}
-	glfwMakeContextCurrent(mainWindow);
-	return true;
-}
-bool InitGL() {
-	glewExperimental = GL_TRUE;
-	if (glewInit()) {
-		cout << "Glew init failed!" << endl;
-		return true;
-	}
-
-	glEnable(GL_BLEND);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	glEnable(GL_ALPHA_TEST);
-	glEnable(GL_DOUBLEBUFFER);
-	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-
-	glGenTextures(1, &screenSprite);
-	glGenVertexArrays(1, &screenVAO);
-	glGenBuffers(1, &screenPlaneObject);
-	shader = ShaderLibrary.GetShader("base");
-
-
-	glBindTexture(GL_TEXTURE_2D, screenSprite);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-
-	screenPlane = Plane(vec2(-1, 1), vec2(1, -1));
-
-
-	glBindVertexArray(screenVAO);
-	glBindBuffer(GL_ARRAY_BUFFER, screenPlaneObject);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * 24, screenPlane.vertices, GL_STATIC_DRAW);
-	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), 0); // position
-	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), (void*)(2 * sizeof(GLfloat))); // texcoords
-	glEnableVertexAttribArray(0);
-	glEnableVertexAttribArray(1);
-
-	glUseProgram(shader);
-	glBindVertexArray(screenVAO);
-	glBindBuffer(GL_ARRAY_BUFFER, screenPlaneObject);
-	glBindTexture(GL_TEXTURE_2D, screenSprite);
-
-	return false;
-}
-
 struct Color {
 	unsigned char r, g, b;
 	Color(unsigned char _r = 0, unsigned char _g = 0, unsigned char _b = 0) {
@@ -275,3 +219,93 @@ struct SpriteList {
 	}
 };
 SpriteList spriteList[2];
+
+void Reset() {
+	spriteList[0] = SpriteList(mmc->GetVRAMCell(0x0));
+	spriteList[1] = SpriteList(mmc->GetVRAMCell(0x1000));
+
+	if (currentROM.fourPage)
+		SetMirroringFourPage();
+	else if (currentROM.verticalMirroring)
+		SetMirroringVertical();
+	else
+		SetMirroringHorizontal();
+
+	// pressets
+	PC = RESET_ADDR;
+	F = 0x34;
+	AC = X = Y = 0;
+	SP = 0xfd;
+	cycle = 0;
+	vramPointer = 0x2000;
+	scanline = 261;
+}
+
+void Load(const char* path) {
+	LoadROM(path);
+	Reset();
+}
+
+void drop_callback(GLFWwindow* window, int count, const char** paths){
+	Load(paths[0]);
+}
+
+bool InitWindow() {
+	if (!glfwInit()) {
+		cout << "Init glfw failed" << endl;
+		return false;
+	}
+	mainWindow = glfwCreateWindow(SCREEN_WIDTH*SCREEN_SCALE, SCREEN_HEIGHT*SCREEN_SCALE, "NES-MULATOR", NULL, NULL);
+	if (!mainWindow) {
+		cout << "Init window failed" << endl;
+		glfwTerminate();
+		return false;
+	}
+	glfwMakeContextCurrent(mainWindow);
+	glfwSetDropCallback(mainWindow, drop_callback);
+	return true;
+}
+bool InitGL() {
+	glewExperimental = GL_TRUE;
+	if (glewInit()) {
+		cout << "Glew init failed!" << endl;
+		return true;
+	}
+
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glEnable(GL_ALPHA_TEST);
+	glEnable(GL_DOUBLEBUFFER);
+	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+
+	glGenTextures(1, &screenSprite);
+	glGenVertexArrays(1, &screenVAO);
+	glGenBuffers(1, &screenPlaneObject);
+	shader = ShaderLibrary.GetShader("base");
+
+
+	glBindTexture(GL_TEXTURE_2D, screenSprite);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+
+	screenPlane = Plane(vec2(-1, 1), vec2(1, -1));
+
+
+	glBindVertexArray(screenVAO);
+	glBindBuffer(GL_ARRAY_BUFFER, screenPlaneObject);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * 24, screenPlane.vertices, GL_STATIC_DRAW);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), 0); // position
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), (void*)(2 * sizeof(GLfloat))); // texcoords
+	glEnableVertexAttribArray(0);
+	glEnableVertexAttribArray(1);
+
+	glUseProgram(shader);
+	glBindVertexArray(screenVAO);
+	glBindBuffer(GL_ARRAY_BUFFER, screenPlaneObject);
+	glBindTexture(GL_TEXTURE_2D, screenSprite);
+
+	return false;
+}
+
+
+

@@ -1,7 +1,8 @@
 #pragma once
 #include "Memory.h"
-#include "Registers.h"
 #include <bitset>
+
+bool crossPage = false;
 
 void GetOpcode() {
 	opcode = mmc->ReadROM(PC);
@@ -41,6 +42,7 @@ void IMPL() {
 void REL() {
 	value = op & 0xff;
 	address = RelAddr(PC, value);
+	if ((PC & 0xff00) != (address & 0xff00)) cpuCycles++;
 }
 void IMM() {
 	value = op & 0xff;
@@ -68,11 +70,13 @@ void ABS() {
 }
 void ABSX() {
 	address = op + X;
+	if ((op & 0xff00) != (address & 0xff00)) crossPage = true;
 	cell = mmc->GetROMCell(address);
 	value = mmc->ReadROM(address);
 }
 void ABSY() {
 	address = op + Y;
+	if ((op & 0xff00) != (address & 0xff00)) crossPage = true;
 	cell = mmc->GetROMCell(address);
 	value = mmc->ReadROM(address);
 }
@@ -83,6 +87,7 @@ void INDX() {
 }
 void INDY() {
 	address = GetIndirect(op) + Y;
+	if ((GetIndirect(op) & 0xff00) != (address & 0xff00)) crossPage = true;
 	cell = mmc->GetROMCell(address);
 	value = mmc->ReadROM(address);
 }
@@ -185,6 +190,7 @@ struct Opcode {
 		}
 	}
 	void exec() {
+		crossPage = false;
 		switch (length) {
 		case 2:
 			GetOperand();
@@ -258,10 +264,12 @@ void ADC() {
 	AC = temp & 0xff;
 	SetCarry(temp > 0xff);
 	SetNZ(AC);
+	if (crossPage && (opcodes[opcode].addressing == ADDR_ABSX || opcodes[opcode].addressing == ADDR_ABSY || opcodes[opcode].addressing == ADDR_INDY)) cpuCycles++;
 }
 void AND() {
 	AC &= value;
 	SetNZ(AC);
+	if (crossPage && (opcodes[opcode].addressing == ADDR_ABSX || opcodes[opcode].addressing == ADDR_ABSY || opcodes[opcode].addressing == ADDR_INDY)) cpuCycles++;
 }
 void ASL() {
 	SetCarry(value & 0x80);
@@ -271,13 +279,22 @@ void ASL() {
 	writeOperation = true;
 }
 void BCC() {
-	if (!GetCarry()) PC = address;
+	if (!GetCarry()) {
+		PC = address;
+		cpuCycles++;
+	}
 }
 void BCS() {
-	if (GetCarry()) PC = address;
+	if (GetCarry()) {
+		PC = address;
+		cpuCycles++;
+	}
 }
 void BEQ() {
-	if (GetZero()) PC = address;
+	if (GetZero()) {
+		PC = address;
+		cpuCycles++;
+	}
 }
 void BIT() {
 	SetSign(value);
@@ -285,13 +302,22 @@ void BIT() {
 	SetZero(AC & value);
 }
 void BMI() {
-	if (GetSign()) PC = address;
+	if (GetSign()) {
+		PC = address;
+		cpuCycles++;
+	}
 }
 void BNE() {
-	if (!GetZero()) PC = address;
+	if (!GetZero()) {
+		PC = address;
+		cpuCycles++;
+	}
 }
 void BPL() {
-	if (!GetSign()) PC = address;
+	if (!GetSign()) {
+		PC = address;
+		cpuCycles++;
+	}
 }
 void BRK() {
 	PUSH16(PC);
@@ -303,10 +329,16 @@ void BRK() {
 	
 }
 void BVC() {
-	if (!GetOverflow())	PC = address;
+	if (!GetOverflow()) {
+		PC = address;
+		cpuCycles++;
+	}
 }
 void BVS() {
-	if (GetOverflow()) PC = address;
+	if (GetOverflow()) {
+		PC = address;
+		cpuCycles++;
+	}
 }
 void CLC() {
 	SetCarry(0);
@@ -324,6 +356,7 @@ void CMP() {
 	unsigned short temp = AC - value;
 	SetCarry(temp < 0x100);
 	SetNZ(temp & 0xff);
+	if (crossPage && (opcodes[opcode].addressing == ADDR_ABSX || opcodes[opcode].addressing == ADDR_ABSY || opcodes[opcode].addressing == ADDR_INDY)) cpuCycles++;
 }
 void CPX() {
 	unsigned short temp = X - value;
@@ -352,6 +385,7 @@ void DEY() {
 void EOR() {
 	AC ^= value;
 	SetNZ(AC);
+	if (crossPage && (opcodes[opcode].addressing == ADDR_ABSX || opcodes[opcode].addressing == ADDR_ABSY || opcodes[opcode].addressing == ADDR_INDY)) cpuCycles++;
 }
 void INC() {
 	value++;
@@ -377,14 +411,17 @@ void JSR() {
 void LDA() {
 	AC = value;
 	SetNZ(AC);
+	if (crossPage && (opcodes[opcode].addressing == ADDR_ABSX || opcodes[opcode].addressing == ADDR_ABSY || opcodes[opcode].addressing == ADDR_INDY)) cpuCycles++;
 }
 void LDX() {
 	X = value;
 	SetNZ(X);
+	if (crossPage && opcodes[opcode].addressing == ADDR_ABSY) cpuCycles++;
 }
 void LDY() {
 	Y = value;
 	SetNZ(Y);
+	if (crossPage && opcodes[opcode].addressing == ADDR_ABSX) cpuCycles++;
 }
 void LSR() {
 	SetCarry(value & 1);
@@ -399,6 +436,7 @@ void NOP() {
 void ORA() {
 	AC |= value;
 	SetNZ(AC);
+	if (crossPage && (opcodes[opcode].addressing == ADDR_ABSX || opcodes[opcode].addressing == ADDR_ABSY || opcodes[opcode].addressing == ADDR_INDY)) cpuCycles++;
 }
 void PHA() {
 	PUSH8(AC);
@@ -450,6 +488,7 @@ void SBC() {
 	SetCarry(temp < 0x100);
 	AC = (temp & 0xff);
 	SetNZ(AC);
+	if (crossPage && (opcodes[opcode].addressing == ADDR_ABSX || opcodes[opcode].addressing == ADDR_ABSY || opcodes[opcode].addressing == ADDR_INDY)) cpuCycles++;
 }
 void SEC() {
 	SetCarry(1);

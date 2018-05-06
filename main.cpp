@@ -14,7 +14,7 @@ u8* screenSpriteArea = &screenSpriteData[256 * 8 * 4];
 u16 currentPixel = 0;
 
 void(*ppuPipeline[scanlineCount][scanlineCycles])();
-
+bool evenFrame = false;
 
 unsigned char GetKeyState(char key) {
 	switch (key) {
@@ -123,7 +123,7 @@ void PresentFrame() {
 	glfwSwapBuffers(mainWindow);
 
 	for (int i = 0; i < 256 * 240 * 4; i++) screenSpriteData[i] = 0;
-	LimitFPS();
+	evenFrame = !evenFrame;
 }
 void CheckInput() {
 	if (glfwGetKey(mainWindow, GLFW_KEY_SPACE)) {
@@ -308,13 +308,13 @@ void InitPPUPipeline() {
 	}
 	ppuPipeline[261][280] = ReloadYScroll;
 	ppuPipeline[241][1] = StartVBlank;
-	ppuPipeline[261][1] = EndVBlank;
+	ppuPipeline[260][303] = EndVBlank;
 }
 
 void CPUStep() {
 	GetOpcode();
-	opcodes[opcode].exec();
 	cpuCycles = opcodes[opcode].cycles;
+	opcodes[opcode].exec();
 }
 
 void PPUStep() {
@@ -326,6 +326,7 @@ void PPUStep() {
 		currentPixel = 0;
 		scanline++;
 		if (scanline == 262) scanline = 0;
+		//if (evenFrame) currentPixel++;
 	}
 }
 void Step() {
@@ -338,33 +339,19 @@ void Run(int numCycles) {
 	for (int i = 0; i < numCycles; i++) Step();
 }
 
+
 int main() {
+
+	// rom independent pressets
 	InitWindow();
 	InitGL();
-	LoadROM();
-
 	palette.LoadColorTable();
 	LoadOpcodesTable();
 	InitPPUPipeline();
 
-	spriteList[0] = SpriteList(mmc->GetVRAMCell(0x0));
-	spriteList[1] = SpriteList(mmc->GetVRAMCell(0x1000));
-
-	if (currentROM.fourPage)
-		SetMirroringFourPage();
-	else if (currentROM.verticalMirroring)
-		SetMirroringVertical();
-	else
-		SetMirroringHorizontal();
-
-	// pressets
-	PC = RESET_ADDR;
-	F = 0x34;
-	AC = X = Y = 0;
-	SP = 0xfd;
-	cycle = 0;
-	vramPointer = 0x2000;
-	scanline = 261;
+	while (!romLoaded) {
+		glfwPollEvents();
+	}
 
 	while (!glfwWindowShouldClose(mainWindow)) {
 		Run(200); // Run for 200 CPU cycles, then check for input

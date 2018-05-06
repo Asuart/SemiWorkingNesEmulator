@@ -1,6 +1,7 @@
 #pragma once
 #include <fstream>
 #include <iostream>
+#include "Registers.h"
 
 typedef char s8;
 typedef short s16;
@@ -11,6 +12,7 @@ typedef unsigned short u16;
 typedef unsigned int u32;
 
 static u16 countPages = 0;
+bool romLoaded = false;
 
 enum MIRRORING_MODE {
 	ONE_PAGE0 = 0,
@@ -368,7 +370,7 @@ void LoadInterruptVectors() {
 	p[1] = mmc->ReadROM(0xffff);
 }
 
-bool LoadROM(char* path = "F:/baltron.nes") {
+bool LoadROM(const char* path = "F:/nestest/blargg_ppu_tests_2005.09.15b/vbl_clear_time.nes") {
 	std::ifstream reader;
 	reader.open(path, std::ifstream::binary);
 	if (!reader) {
@@ -414,4 +416,5 @@ bool LoadROM(char* path = "F:/baltron.nes") {
 	cout << path << endl;
 
 	delete[] ROMdata;
+	romLoaded = true;
 }
